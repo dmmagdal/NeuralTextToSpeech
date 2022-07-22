@@ -1,0 +1,18 @@
+# Flowtron
+
+Description: A Tensorflow implementation of the Flowtron text to speech model in Tensorflow 2.
+
+
+### Notes:
+ * Transliterating the audio processing from Pytorch in the original [Flowtron repository](https://github.com/NVIDIA/flowtron) from Nvidia to Tensorflow 2 has been limited. Still figuring out the 1D convolutions between Pytorch and Tensorflow in the audio_processing.py file for the STFT/TacotronSTFT modules.
+ * Found an alternative way to process audio from wav to mel spectrograms in Tensorflow. This was inspired by the way spectrogram signals are extracted in official Keras examples (such as [Transformer ASR](https://keras.io/examples/audio/transformer_asr/) and [ASR with CTC](https://keras.io/examples/audio/ctc_asr/)) and is expanded upon from the Keras [MelGAN example](https://keras.io/examples/audio/melgan_spectrogram_inversion/) and [Medium article](https://towardsdatascience.com/how-to-easily-process-audio-on-your-gpu-with-tensorflow-2d9d91360f06). This can be found in the audio_processing_tf.py file.
+ * The following variables for audio processing are used interchangeably (along with the defaults specified by the hparams/config file in the Nvidia Tacotron2/Flowtron repository):
+ 	- sampling_rate (22050)
+ 	- filter_length = nfft_length (1024)
+ 	- hop_length = frame_step (256)
+ 	- win_length = frame_length (1024)
+ 	- mel_fmin (0.0)
+ 	- mel_fmax (8000.0)
+ 	- n_mel_channels (80)
+ * test.py in the root directory tests the STFT functions compiled in Tacotron2_TF/process_audio.py as well as Flowtron_TF/audio_processing.py. Additional notes regarding the results compared to the Nvidia Tacotron STFT implementation in PyTorch can be found in the test.py file.
+ * The way get_mel() is set up in the tensorflow implementation of data.py outputs a tensor of shape (mel_lengths, n_mel_channels). In the Nvidia Flowtron data.py, the tensor from get_mel() is of shape (n_mel_channels, mel_lengths). This difference affects downstream functions such as compute_attention_prior(), the data collator, and even the expected input shape into the Flowtron neural network. This may be changed later to match the original implementation. In the event that is the case, this note will be struck through.
