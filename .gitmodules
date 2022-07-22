@@ -1,0 +1,3 @@
+[submodule "FastPitch_TF/DeepLearningExamples"]
+	path = FastPitch_TF/DeepLearningExamples
+	url = https://github.com/NVIDIA/DeepLearningExamples
