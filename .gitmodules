@@ -7,3 +7,6 @@
 [submodule "Tacotron2_TF/Tacotron-2"]
 	path = Tacotron2_TF/Tacotron-2
 	url = https://github.com/Rayhane-mamah/Tacotron-2
+[submodule "Flowtron_TF/flowtron"]
+	path = Flowtron_TF/flowtron
+	url = https://github.com/NVIDIA/flowtron
