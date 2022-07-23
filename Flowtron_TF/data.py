@@ -197,9 +197,10 @@ class Data:#(tf.data.Dataset):
 		print("Generating dataset...")
 
 		# Use for generating tf.data.Dataset from_generator().
-		# for idx in range(len(self.audiopaths_and_text)):
-		# 	yield self.__getitem__(idx)
+		for idx in tqdm(range(len(self.audiopaths_and_text))):
+			yield self.__getitem__(idx)
 
+		'''
 		# Use as a part of generating tf.data.Dataset
 		# from_tensor_slices(). This will also keep track of the 
 		# maximum input (text) length.
@@ -220,6 +221,7 @@ class Data:#(tf.data.Dataset):
 			mel_tensors_list, speaker_id_tensors_list,
 			text_tensors_list, attn_prior_tensors_list
 		), max_input_length
+		'''
 
 
 	def __getitem__(self, index):

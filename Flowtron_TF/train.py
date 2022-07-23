@@ -86,7 +86,7 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 	# Load training and validation data.
 	n_mel_channels = 80
 	trainset, valset, collate_fn = prepare_dataloaders(data_config)
-	'''
+	#'''
 	train_dataset = tf.data.Dataset.from_generator(
 		trainset.generator, 
 		output_signature=(
@@ -99,7 +99,7 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 		)
 	)
 	valid_dataset = tf.data.Dataset.from_generator(
-		trainset.generator, 
+		valset.generator, 
 		output_signature=(
 			tf.TensorSpec(
 				shape=(None, n_mel_channels), dtype=tf.float32
@@ -109,13 +109,19 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 			tf.TensorSpec(shape=(None, None), dtype=tf.float32)
 		)
 	)
+	print(list(train_dataset.as_numpy_iterator())[0])
+	print(list(valid_dataset.as_numpy_iterator())[0])
 	'''
+	# Using the .from_tensor_slices() currently will throw an
+	# error in which all the tensors for each feature must be of the
+	# exact same shape.
 	train_dataset_tensors, max_input_length = trainset.generator()
 	train_dataset = tf.data.Dataset.from_tensor_slices(
 		train_dataset_tensors
 	)
 	print(max_input_length)
 	print(list(train_dataset.as_numpy_iterator())[0])
+	'''
 
 	
 	# Training loop.
