@@ -12,6 +12,7 @@ import json
 import random
 import numpy as np
 import tensorflow as tf
+from tqdm import tqdm
 from scipy.io.wavfile import read
 from scipy.stats import betabinom
 from audio_processing_tf import STFT
@@ -193,6 +194,8 @@ class Data:#(tf.data.Dataset):
 
 
 	def generator(self):
+		print("Generating dataset...")
+
 		# Use for generating tf.data.Dataset from_generator().
 		# for idx in range(len(self.audiopaths_and_text)):
 		# 	yield self.__getitem__(idx)
@@ -202,7 +205,7 @@ class Data:#(tf.data.Dataset):
 		# maximum input (text) length.
 		mel_tensors_list, speaker_id_tensors_list = [], []
 		text_tensors_list, attn_prior_tensors_list = [], []
-		for idx in range(len(self.audiopaths_and_text)):
+		for idx in tqdm(range(len(self.audiopaths_and_text))):
 			item = self.__getitem__(idx)
 			mel_tensors_list.append(item[0])
 			speaker_id_tensors_list.append(item[1])
