@@ -111,10 +111,15 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 	)
 	print(list(train_dataset.as_numpy_iterator())[0])
 	print(list(valid_dataset.as_numpy_iterator())[0])
+
+	max_input_length = max([tf.shape(val[2])[0] for val in train_dataset])
+	print("Max text input length: {}".format(max_input_length))
 	'''
 	# Using the .from_tensor_slices() currently will throw an
 	# error in which all the tensors for each feature must be of the
-	# exact same shape.
+	# exact same shape. (Also as a side note: On Desktop GPU, this 
+	# process will exhaust the 8GB VRAM available. Using
+	# .from_generator() will NOT exhause that resource).
 	train_dataset_tensors, max_input_length = trainset.generator()
 	train_dataset = tf.data.Dataset.from_tensor_slices(
 		train_dataset_tensors
