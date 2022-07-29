@@ -89,7 +89,7 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 	# mel-spectrogram.
 	n_mel_channels = 80
 	trainset, valset, collate_fn = prepare_dataloaders(data_config)
-	#'''
+	'''
 	train_dataset = tf.data.Dataset.from_generator(
 		trainset.generator,
 		args=("training", True),
@@ -102,7 +102,7 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 			tf.TensorSpec(shape=(None, None), dtype=tf.float32)
 		)
 	)
-	#'''
+	'''
 	valid_dataset = tf.data.Dataset.from_generator(
 		valset.generator,
 		args=("validation", True),
@@ -122,19 +122,19 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 	# lengths for each dataset. For the target (mel-spectrogram)
 	# length, be aware of which dimension is the n_mel_channels and
 	# which is the length of the mel-spectrogram.
-	#'''
+	'''
 	train_max_in_len = max(
 		[tf.shape(value[2])[0] for value in train_dataset]
 	)
 	train_max_tar_len = max(
 		[tf.shape(value[0])[0] for value in train_dataset]
 	)
-	#'''
+	'''
 	val_max_in_len = max(
-		[tf.shape(value[2])[0] for value in valid_dataset]
+		[tf.shape(value[2])[0] for value in list(valid_dataset.as_numpy_iterator())]
 	)
 	val_max_tar_len = max(
-		[tf.shape(value[0])[0] for value in valid_dataset]
+		[tf.shape(value[0])[0] for value in list(valid_dataset.as_numpy_iterator())]
 	)
 	'''
 	# Using the .from_tensor_slices() currently will throw an
@@ -168,7 +168,7 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 	# padding. Additional information can be found in this stack
 	# overflow response (https://stackoverflow.com/questions/
 	# 50538038/tf-data-dataset-mapmap-func-with-eager-mode).
-	#'''
+	'''
 	collate_fn.update_max_len(train_max_in_len, train_max_tar_len)
 	train_dataset = train_dataset.map(
 		lambda mel, speaker, text_enc, attn_prior:
@@ -181,7 +181,7 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 		), 
 		num_parallel_calls=tf.data.AUTOTUNE,
 	)
-	#'''
+	'''
 	collate_fn.update_max_len(val_max_in_len, val_max_tar_len)
 	valid_dataset = valid_dataset.map(
 		lambda mel, speaker, text_enc, attn_prior:
@@ -195,6 +195,39 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 		num_parallel_calls=tf.data.AUTOTUNE,
 	)
 	print(list(valid_dataset.as_numpy_iterator())[0])
+
+	# NOTE: This entire process of loading the dataset, finding the
+	# maximum input (text) and target (mel-spectrogram) lengths, and
+	# applying the data collate function cyles through the data 4
+	# times. This means that if the training dataset takes an hour to
+	# iterate through through once, then the whole process will take 4
+	# hours to complete. It is advised that this loading and processing
+	# is done once and saved (to be loaded again when actually training
+	# or running inference).
+
+	# Having a hard time using this to save/load dataset because:
+	# 1) the load() function requires an element_spec but the 
+	#	documentation on how that is supposed to look like is vague.
+	# 2) on the official tensorflow documentation (currently at v2.9)
+	#	it warns that tf.data.experimental.load() and 
+	#	tf.data.experimental.save() are deprecated functions.
+	'''
+	element_spec = [
+		tf.TensorSpec(
+			shape=(None, n_mel_channels), dtype=tf.float32
+		),
+		tf.TensorSpec(shape=(1,), dtype=tf.int64),
+		tf.TensorSpec(shape=(None,), dtype=tf.int64),
+		tf.TensorSpec(shape=(1,), dtype=tf.int64),
+		tf.TensorSpec(shape=(1,), dtype=tf.int64),
+		tf.TensorSpec(shape=(None,), dtype=tf.int64),
+		tf.TensorSpec(shape=(None, None), dtype=tf.float32)
+	]
+	tf.data.experimental.save(valid_dataset, "./LJSpeech-Valid")
+	dataset = tf.data.experimental.load(
+		"./LJSpeech-Valid", element_spec
+	)
+	'''
 	
 	# Training loop.
 	pass

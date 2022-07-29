@@ -259,6 +259,12 @@ class DataCollate:
 
 
 	def __call__(self, mel, speaker_id, text_encoded, attn_prior):
+		# The following assertions make sure that the text and mel
+		# spectrogram lengths do not exceed the maximums set in the
+		# object.
+		assert self.max_input_len >= text_encoded.shape[0], f"Input encoded text length exceeds maximum length ({self.max_input_len}): Received {text_encoded.shape[0]}"
+		assert self.max_target_len >= mel.shape[0], f"Target mel specrogram length exceeds maximum length ({self.max_target_len}): Received {mel.shape[0]}"
+
 		# Right zero-pad all one-hot text sequences to max input
 		# length.
 		text_padded = np.zeros((self.max_input_len,), dtype=np.int_)
