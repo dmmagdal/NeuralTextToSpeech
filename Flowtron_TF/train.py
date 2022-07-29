@@ -89,7 +89,7 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 	# mel-spectrogram.
 	n_mel_channels = 80
 	trainset, valset, collate_fn = prepare_dataloaders(data_config)
-	'''
+	#'''
 	train_dataset = tf.data.Dataset.from_generator(
 		trainset.generator,
 		args=("training", True),
@@ -102,7 +102,7 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 			tf.TensorSpec(shape=(None, None), dtype=tf.float32)
 		)
 	)
-	'''
+	#'''
 	valid_dataset = tf.data.Dataset.from_generator(
 		valset.generator,
 		args=("validation", True),
@@ -122,19 +122,19 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 	# lengths for each dataset. For the target (mel-spectrogram)
 	# length, be aware of which dimension is the n_mel_channels and
 	# which is the length of the mel-spectrogram.
-	'''
+	#'''
 	train_max_in_len = max(
 		[tf.shape(value[2])[0] for value in train_dataset]
 	)
 	train_max_tar_len = max(
 		[tf.shape(value[0])[0] for value in train_dataset]
 	)
-	'''
+	#'''
 	val_max_in_len = max(
-		[tf.shape(value[2])[0] for value in list(valid_dataset.as_numpy_iterator())]
+		[tf.shape(value[2])[0] for value in valid_dataset]
 	)
 	val_max_tar_len = max(
-		[tf.shape(value[0])[0] for value in list(valid_dataset.as_numpy_iterator())]
+		[tf.shape(value[0])[0] for value in valid_dataset]
 	)
 	'''
 	# Using the .from_tensor_slices() currently will throw an
@@ -168,7 +168,7 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 	# padding. Additional information can be found in this stack
 	# overflow response (https://stackoverflow.com/questions/
 	# 50538038/tf-data-dataset-mapmap-func-with-eager-mode).
-	'''
+	#'''
 	collate_fn.update_max_len(train_max_in_len, train_max_tar_len)
 	train_dataset = train_dataset.map(
 		lambda mel, speaker, text_enc, attn_prior:
@@ -181,7 +181,7 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 		), 
 		num_parallel_calls=tf.data.AUTOTUNE,
 	)
-	'''
+	#'''
 	collate_fn.update_max_len(val_max_in_len, val_max_tar_len)
 	valid_dataset = valid_dataset.map(
 		lambda mel, speaker, text_enc, attn_prior:
