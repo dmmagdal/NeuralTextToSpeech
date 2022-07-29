@@ -193,35 +193,36 @@ class Data:#(tf.data.Dataset):
 		return text_norm
 
 
-	def generator(self):
-		print("Generating dataset...")
+	def generator(self, dataset_type, from_generator=True):
+		print("Generating {} dataset...".format(
+			dataset_type.decode("utf-8")
+		))
 
-		# Use for generating tf.data.Dataset from_generator().
-		for idx in tqdm(range(len(self.audiopaths_and_text))):
-			yield self.__getitem__(idx)
+		if from_generator:
+			# Use for generating tf.data.Dataset from_generator().
+			for idx in tqdm(range(len(self.audiopaths_and_text))):
+				yield self.__getitem__(idx)
+		else:
+			# Use as a part of generating tf.data.Dataset
+			# from_tensor_slices(). This will also keep track of the 
+			# maximum input (text) length.
+			mel_tensors_list, speaker_id_tensors_list = [], []
+			text_tensors_list, attn_prior_tensors_list = [], []
+			for idx in tqdm(range(len(self.audiopaths_and_text))):
+				item = self.__getitem__(idx)
+				mel_tensors_list.append(item[0])
+				speaker_id_tensors_list.append(item[1])
+				text_tensors_list.append(item[2])
+				attn_prior_tensors_list.append(item[3])
 
-		'''
-		# Use as a part of generating tf.data.Dataset
-		# from_tensor_slices(). This will also keep track of the 
-		# maximum input (text) length.
-		mel_tensors_list, speaker_id_tensors_list = [], []
-		text_tensors_list, attn_prior_tensors_list = [], []
-		for idx in tqdm(range(len(self.audiopaths_and_text))):
-			item = self.__getitem__(idx)
-			mel_tensors_list.append(item[0])
-			speaker_id_tensors_list.append(item[1])
-			text_tensors_list.append(item[2])
-			attn_prior_tensors_list.append(item[3])
+			max_input_length = max(
+				[tf.shape(text)[0] for text in text_tensors_list]
+			).numpy().item()
 
-		max_input_length = max(
-			[tf.shape(text)[0] for text in text_tensors_list]
-		).numpy().item()
-
-		return (
-			mel_tensors_list, speaker_id_tensors_list,
-			text_tensors_list, attn_prior_tensors_list
-		), max_input_length
-		'''
+			return (
+				mel_tensors_list, speaker_id_tensors_list,
+				text_tensors_list, attn_prior_tensors_list
+			), max_input_length
 
 
 	def __getitem__(self, index):
@@ -253,17 +254,72 @@ class DataCollate:
 	def __init__(self, n_frames_per_step=1, use_attn_prior=False):
 		self.n_frames_per_step = n_frames_per_step
 		self.use_attn_prior = use_attn_prior
+		self.max_input_len = 0
+		self.max_target_len = 0
 
 
-	def call(self, inputs):
-		mel, speaker_id, text_encoded, attn_prior = inputs
+	def __call__(self, mel, speaker_id, text_encoded, attn_prior):
 		# Right zero-pad all one-hot text sequences to max input
 		# length.
-
+		text_padded = np.zeros((self.max_input_len,), dtype=np.int_)
+		text_padded[:text_encoded.shape[0]] = text_encoded
+		text_padded = tf.convert_to_tensor(text_padded, dtype=tf.int64)
+		
 		# Right zero-pad mel-spec.
+		n_mel_channels = mel.shape[1]
+		if self.max_target_len % self.n_frames_per_step != 0:
+			max_target_len = self.max_target_len
+			max_target_len += self.n_frames_per_step - max_target_len % self.n_frames_per_step
+			assert max_target_len % self.n_frames_per_step == 0
 
-		# include mel padded, gate padded and speaker ids.
-		pass
+		# Include mel padded, gate padded, and speaker ids.
+		mel_padded = np.zeros(
+			(self.max_target_len, n_mel_channels), dtype=np.float32
+		)
+		gate_padded = np.zeros((self.max_target_len), dtype=np.float32)
+
+		# NOTE: use_attn_prior = None, self.use_attn_prior is not
+		# handled in the original data.py in the Nvidia Flowtron repo.
+		attn_prior_padded = None
+		if self.use_attn_prior:
+			attn_prior_padded = np.zeros(
+				(self.max_target_len, self.max_input_len)
+			)
+			attn_prior_padded[
+				:attn_prior.shape[0], :attn_prior.shape[1]
+			] = attn_prior
+			attn_prior_padded = tf.convert_to_tensor(
+				attn_prior_padded, dtype=tf.float32
+			)
+		mel_padded[:mel.shape[0], :] = mel
+		mel_padded = tf.convert_to_tensor(mel_padded)
+		gate_padded[mel.shape[0] - 1:] = 1
+		gate_padded = tf.convert_to_tensor(gate_padded, dtype=tf.int64)
+
+		# Convert remaining values to tensors.
+		speaker_id = tf.convert_to_tensor(speaker_id, dtype=tf.int64)
+		input_lengths = tf.convert_to_tensor(
+			text_encoded.shape[0], dtype=tf.int64
+		)
+		output_lengths = tf.convert_to_tensor(
+			mel.shape[0], dtype=tf.int64
+		)
+
+		# Outputs are mel padded, speaker ids, text padded, input
+		# lengths, output lengths, gate padded, attn prior padded.
+		# Output dtypes are tf.float32, tf.int64, tf.int64, tf.int64,
+		# tf.int64, tf.float32, tf.float32.
+		# Output shapes are (None, n_mel_channels), (1,), (None,),
+		# (1,), (1,), (None,), (None, None) 
+		return (mel_padded, speaker_id, text_padded, input_lengths,
+				output_lengths, gate_padded, attn_prior_padded)
+
+
+	def update_max_len(self, max_input_len, max_target_len):
+		# Update the maximum input ((encoded) text) and target/output
+		# (mel-spectrogram) lengths.
+		self.max_input_len = max_input_len
+		self.max_target_len = max_target_len
 
 
 # ===================================================================

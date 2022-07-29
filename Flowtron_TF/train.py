@@ -83,12 +83,16 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 
 	# Initialize model. Resume training from checkpoints if applicable.
 
-	# Load training and validation data.
+	# Load training and validation data. For the shape of the
+	# TensorSpec for the mel-spectrograms, be aware of which dimension
+	# is the n_mel_channels and which is the length of the
+	# mel-spectrogram.
 	n_mel_channels = 80
 	trainset, valset, collate_fn = prepare_dataloaders(data_config)
 	#'''
 	train_dataset = tf.data.Dataset.from_generator(
-		trainset.generator, 
+		trainset.generator,
+		args=("training", True),
 		output_signature=(
 			tf.TensorSpec(
 				shape=(None, n_mel_channels), dtype=tf.float32
@@ -98,8 +102,10 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 			tf.TensorSpec(shape=(None, None), dtype=tf.float32)
 		)
 	)
+	#'''
 	valid_dataset = tf.data.Dataset.from_generator(
-		valset.generator, 
+		valset.generator,
+		args=("validation", True),
 		output_signature=(
 			tf.TensorSpec(
 				shape=(None, n_mel_channels), dtype=tf.float32
@@ -109,25 +115,86 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 			tf.TensorSpec(shape=(None, None), dtype=tf.float32)
 		)
 	)
-	print(list(train_dataset.as_numpy_iterator())[0])
+	# print(list(train_dataset.as_numpy_iterator())[0])
 	print(list(valid_dataset.as_numpy_iterator())[0])
 
-	max_input_length = max([tf.shape(val[2])[0] for val in train_dataset])
-	print("Max text input length: {}".format(max_input_length))
+	# Find the maximum input (text) and target (mel-spectrogram)
+	# lengths for each dataset. For the target (mel-spectrogram)
+	# length, be aware of which dimension is the n_mel_channels and
+	# which is the length of the mel-spectrogram.
+	#'''
+	train_max_in_len = max(
+		[tf.shape(value[2])[0] for value in train_dataset]
+	)
+	train_max_tar_len = max(
+		[tf.shape(value[0])[0] for value in train_dataset]
+	)
+	#'''
+	val_max_in_len = max(
+		[tf.shape(value[2])[0] for value in valid_dataset]
+	)
+	val_max_tar_len = max(
+		[tf.shape(value[0])[0] for value in valid_dataset]
+	)
 	'''
 	# Using the .from_tensor_slices() currently will throw an
 	# error in which all the tensors for each feature must be of the
 	# exact same shape. (Also as a side note: On Desktop GPU, this 
 	# process will exhaust the 8GB VRAM available. Using
 	# .from_generator() will NOT exhause that resource).
-	train_dataset_tensors, max_input_length = trainset.generator()
+	train_dataset_tensors, max_input_length = trainset.generator(
+		"training", False
+	)
 	train_dataset = tf.data.Dataset.from_tensor_slices(
 		train_dataset_tensors
 	)
-	print(max_input_length)
+	valid_dataset_tensors, max_input_length = valset.generator(
+		"validation", False
+	)
+	valid_dataset = tf.data.Dataset.from_tensor_slices(
+		valid_dataset_tensors
+	)
+	print("Max text input length: {}".format(max_input_length))
 	print(list(train_dataset.as_numpy_iterator())[0])
+	print(list(valid_dataset.as_numpy_iterator())[0])
 	'''
 
+	# Update input and target lengths to data collate function for
+	# each respective dataset. Then apply data collate function to
+	# the datasets. Leverage tf.numpy_function() to wrap around the
+	# call to the data collate function to allow for the input tensors
+	# to be converted to numpy arrays. This allows for the tensors
+	# (which are currently in graph execution mode) to be read for
+	# padding. Additional information can be found in this stack
+	# overflow response (https://stackoverflow.com/questions/
+	# 50538038/tf-data-dataset-mapmap-func-with-eager-mode).
+	#'''
+	collate_fn.update_max_len(train_max_in_len, train_max_tar_len)
+	train_dataset = train_dataset.map(
+		lambda mel, speaker, text_enc, attn_prior:
+		tf.numpy_function(
+			collate_fn, [mel, speaker, text_enc, attn_prior],
+			[
+				tf.float32, tf.int64, tf.int64, tf.int64, tf.int64, 
+				tf.int64, tf.float32
+			]
+		), 
+		num_parallel_calls=tf.data.AUTOTUNE,
+	)
+	#'''
+	collate_fn.update_max_len(val_max_in_len, val_max_tar_len)
+	valid_dataset = valid_dataset.map(
+		lambda mel, speaker, text_enc, attn_prior:
+		tf.numpy_function(
+			collate_fn, [mel, speaker, text_enc, attn_prior],
+			[
+				tf.float32, tf.int64, tf.int64, tf.int64, tf.int64, 
+				tf.int64, tf.float32
+			]
+		), 
+		num_parallel_calls=tf.data.AUTOTUNE,
+	)
+	print(list(valid_dataset.as_numpy_iterator())[0])
 	
 	# Training loop.
 	pass
@@ -149,7 +216,7 @@ if __name__ == "__main__":
 	global config
 	config = json.loads(data)
 	update_params(config, args.params)
-	print(config)
+	print(json.dumps(config, indent=4))
 
 	train_config = config["train_config"]
 	global data_config
