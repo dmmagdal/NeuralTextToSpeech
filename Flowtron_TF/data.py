@@ -225,6 +225,40 @@ class Data:#(tf.data.Dataset):
 			), max_input_length
 
 
+	'''
+	def get_max_lengths(self):
+		max_input_len = 0
+		max_target_len = 0
+
+		texts = []
+		mels = []
+		for idx in range(len(self.audiopaths_and_text)):
+			# Read audio and text
+			audiopath, text, speaker_id = self.audiopaths_and_text[idx]
+			audio, sampling_rate = load_wav_to_tensorflow(audiopath)
+			mel = self.get_mel(audio)
+			text_encoded = self.get_text(text)
+
+			# Find the maximum of the lengths for the (encoded) text
+			# and (mel spectrogram) audio.
+			max_input_len = max(
+				max_input_len, tf.shape(text_encoded)[0]
+			)
+			max_target_len = max(
+				max_target_len, tf.shape(mel)[0]
+			)
+
+			texts.append(text_encoded)
+			mels.append(mel)
+
+		print(f"max text len: {max([tf.shape(text).numpy().item(0) for text in texts])}")
+		print(f"max mel len: {max([tf.shape(mel).numpy().item(0) for mel in mels])}")
+
+		# Return the maximum length values.
+		return max_input_len, max_target_len
+	'''
+
+
 	def __getitem__(self, index):
 		# Read audio and text
 		audiopath, text, speaker_id = self.audiopaths_and_text[index]

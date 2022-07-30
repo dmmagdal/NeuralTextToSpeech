@@ -25,8 +25,10 @@ import tensorflow as tf
 
 
 def dynamic_range_compression(x, C=1, clip_val=1e-5):
-	return tf.math.log(tf.clip_by_value(
-		x, clip_value_min=clip_val, clip_value_max=tf.float32.max) * C
+	return tf.math.log(
+		tf.clip_by_value(
+			x, clip_value_min=clip_val, clip_value_max=tf.float32.max
+		) * C
    )
 
 
