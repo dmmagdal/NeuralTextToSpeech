@@ -43,6 +43,15 @@ def load_filepaths_and_text(filelist, split="|"):
 	return filepaths_and_text
 
 
+'''
+def load_wav_to_torch(full_path):
+	""" Loads wavdata into torch array """
+	sampling_rate, data = read(full_path)
+	# return torch.from_numpy(data).float(), sampling_rate
+	return tf.convert_to_tensor(data, dtype=tf.float32), sampling_rate
+'''
+
+
 def load_wav_to_tensorflow(full_path):
 	""" Loads wavdata into tensorflow array """
 	file = tf.io.read_file(full_path)
@@ -54,7 +63,7 @@ def load_wav_to_tensorflow(full_path):
 	return audio, sampling_rate
 
 
-class Data:
+class Data:#(tf.data.Dataset):
 	def __init__(self, filelist_path, filter_length, hop_length, 
 			win_length, sampling_rate, mel_fmin, mel_fmax, 
 			max_wav_value, p_arpabet, cmudict_path, text_cleaners, 
@@ -184,62 +193,70 @@ class Data:
 		return text_norm
 
 
-	def set_collate_fn(self, collate_fn):
-		self.collate_fn = collate_fn
-
-
-	def generator(self, dataset_type, collate=True):
+	def generator(self, dataset_type, from_generator=True):
 		print("Generating {} dataset...".format(
 			dataset_type.decode("utf-8")
 		))
 
-		mel_tensors_list, speaker_id_tensors_list = [], []
-		text_tensors_list, attn_prior_tensors_list = [], []
-		for idx in tqdm(range(len(self.audiopaths_and_text))):
-			item = self.__getitem__(idx)
-			mel_tensors_list.append(item[0])
-			speaker_id_tensors_list.append(item[1])
-			text_tensors_list.append(item[2])
-			attn_prior_tensors_list.append(item[3])
-
-		if not collate:
-			# Return only the data without the collate function.
-			for idx in range(len(self.audiopaths_and_text)):
-				yield (
-					mel_tensors_list[idx], 
-					speaker_id_tensors_list[idx],
-					text_tensors_list[idx],
-					attn_prior_tensors_list[idx]
-				)
+		if from_generator:
+			# Use for generating tf.data.Dataset from_generator().
+			for idx in tqdm(range(len(self.audiopaths_and_text))):
+				yield self.__getitem__(idx)
 		else:
-			# Extract the input (text) and target (mel-spectrogram)
-			# lengths before applying the collate function to pad the
-			# data.
-			print("Extracting max input/target lengths...")
-			max_input_len = max(
+			# Use as a part of generating tf.data.Dataset
+			# from_tensor_slices(). This will also keep track of the 
+			# maximum input (text) length.
+			mel_tensors_list, speaker_id_tensors_list = [], []
+			text_tensors_list, attn_prior_tensors_list = [], []
+			for idx in tqdm(range(len(self.audiopaths_and_text))):
+				item = self.__getitem__(idx)
+				mel_tensors_list.append(item[0])
+				speaker_id_tensors_list.append(item[1])
+				text_tensors_list.append(item[2])
+				attn_prior_tensors_list.append(item[3])
+
+			max_input_length = max(
 				[tf.shape(text)[0] for text in text_tensors_list]
 			).numpy().item()
-			max_target_len = max(
-				[tf.shape(mel)[0] for mel in mel_tensors_list]
-			).numpy().item()
 
-			# Update collate function with the maximum input and target
-			# lengths.
-			self.collate_fn.update_max_len(
-				max_input_len, max_target_len
+			return (
+				mel_tensors_list, speaker_id_tensors_list,
+				text_tensors_list, attn_prior_tensors_list
+			), max_input_length
+
+
+	'''
+	def get_max_lengths(self):
+		max_input_len = 0
+		max_target_len = 0
+
+		texts = []
+		mels = []
+		for idx in range(len(self.audiopaths_and_text)):
+			# Read audio and text
+			audiopath, text, speaker_id = self.audiopaths_and_text[idx]
+			audio, sampling_rate = load_wav_to_tensorflow(audiopath)
+			mel = self.get_mel(audio)
+			text_encoded = self.get_text(text)
+
+			# Find the maximum of the lengths for the (encoded) text
+			# and (mel spectrogram) audio.
+			max_input_len = max(
+				max_input_len, tf.shape(text_encoded)[0]
+			)
+			max_target_len = max(
+				max_target_len, tf.shape(mel)[0]
 			)
 
-			# Apply the collate function before returning the output.
-			# Note that this will result in a different output 
-			# signature for the dataset.
-			print("Applying collate function...")
-			for idx in tqdm(range(len(self.audiopaths_and_text))):
-				yield self.collate_fn(
-					mel_tensors_list[idx], 
-					speaker_id_tensors_list[idx],
-					text_tensors_list[idx],
-					attn_prior_tensors_list[idx]
-				)
+			texts.append(text_encoded)
+			mels.append(mel)
+
+		print(f"max text len: {max([tf.shape(text).numpy().item(0) for text in texts])}")
+		print(f"max mel len: {max([tf.shape(mel).numpy().item(0) for mel in mels])}")
+
+		# Return the maximum length values.
+		return max_input_len, max_target_len
+	'''
 
 
 	def __getitem__(self, index):

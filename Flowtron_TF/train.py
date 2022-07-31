@@ -89,6 +89,47 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 	# mel-spectrogram.
 	n_mel_channels = 80
 	trainset, valset, collate_fn = prepare_dataloaders(data_config)
+	trainset.set_collate_fn(collate_fn)
+	valset.set_collate_fn(collate_fn)
+
+	'''
+	train_dataset = tf.data.Dataset.from_generator(
+		trainset.generator,
+		args=("training", True),
+		output_signature=(
+			tf.TensorSpec(
+				shape=(None, n_mel_channels), dtype=tf.float32
+			),
+			tf.TensorSpec(shape=(1,), dtype=tf.int64),
+			tf.TensorSpec(shape=(None,), dtype=tf.int64),
+			tf.TensorSpec(shape=(), dtype=tf.int64),
+			tf.TensorSpec(shape=(), dtype=tf.int64),
+			tf.TensorSpec(shape=(None,), dtype=tf.int64),
+			tf.TensorSpec(shape=(None, None), dtype=tf.float32)
+		)
+	)
+	'''
+	valid_dataset = tf.data.Dataset.from_generator(
+		valset.generator,
+		args=("validation", True),
+		output_signature=(
+			tf.TensorSpec(
+				shape=(None, n_mel_channels), dtype=tf.float32
+			), # mel
+			tf.TensorSpec(shape=(1,), dtype=tf.int64), # speaker
+			tf.TensorSpec(shape=(None,), dtype=tf.int64), # text
+			tf.TensorSpec(shape=(), dtype=tf.int64), # input_len
+			tf.TensorSpec(shape=(), dtype=tf.int64), # target_len
+			tf.TensorSpec(shape=(None,), dtype=tf.int64), # gate
+			tf.TensorSpec(shape=(None, None), dtype=tf.float32) # attn_prior
+		)
+	)
+	# print(list(train_dataset.as_numpy_iterator())[0])
+	print(list(valid_dataset.as_numpy_iterator())[0])
+
+
+	exit()
+
 	'''
 	train_dataset = tf.data.Dataset.from_generator(
 		trainset.generator,
