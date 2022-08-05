@@ -8,6 +8,7 @@
 import argparse
 import json
 import os
+import copy
 import tensorflow as tf
 import ast
 
@@ -68,7 +69,6 @@ def prepare_dataloaders(data_config):
 	return trainset, valset, collate_fn
 
 
-
 def train(n_gpus, rank, output_directory, epochs, optim_algo, 
 		learning_rate, weight_decay, sigma, iters_per_checkpoint, 
 		batch_size, seed, checkpoint_path, ignore_layers, 
@@ -88,12 +88,10 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 	# is the n_mel_channels and which is the length of the
 	# mel-spectrogram.
 	n_mel_channels = 80
+	trainset, valset, collate_fn = prepare_dataloaders(data_config)
 
 	with tf.device("/cpu:0"):
-		trainset, valset, collate_fn = prepare_dataloaders(data_config)
-		trainset.set_collate_fn(collate_fn)
-		valset.set_collate_fn(collate_fn)
-
+		# Try method 3 (method 1 but modified to track max lengths).
 		#'''
 		train_dataset = tf.data.Dataset.from_generator(
 			trainset.generator,
@@ -104,34 +102,126 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 				),
 				tf.TensorSpec(shape=(1,), dtype=tf.int64),
 				tf.TensorSpec(shape=(None,), dtype=tf.int64),
-				tf.TensorSpec(shape=(), dtype=tf.int64),
-				tf.TensorSpec(shape=(), dtype=tf.int64),
-				tf.TensorSpec(shape=(None,), dtype=tf.int64),
 				tf.TensorSpec(shape=(None, None), dtype=tf.float32)
 			)
 		)
 		#'''
+		
+		print(list(train_dataset.as_numpy_iterator())[0])
+		print(f"Train max input: {trainset.max_input_len}, max target: {trainset.max_target_len}")
+
+
+		#'''
+		print(f"Collate function max input: {collate_fn.max_input_len}, max target: {collate_fn.max_target_len}")
+		train_collate_fn = copy.deepcopy(collate_fn)
+		train_collate_fn.update_max_len(
+			trainset.max_input_len, trainset.max_target_len
+		)
+		print(f"Collate function max input: {train_collate_fn.max_input_len}, max target: {train_collate_fn.max_target_len}")
+		train_dataset = train_dataset.map(
+			lambda mel, speaker, text_enc, attn_prior:
+			tf.numpy_function(
+				train_collate_fn, [mel, speaker, text_enc, attn_prior],
+				[
+					tf.float32, tf.int64, tf.int64, tf.int64, tf.int64, 
+					tf.int64, tf.float32
+				]
+			), 
+			num_parallel_calls=tf.data.AUTOTUNE,
+		).batch(8).prefetch(tf.data.AUTOTUNE)
+		#'''
+
+
+
+		# Rearranged dataset operations to be in sequence rather than in
+		# parallel. Hypothesis is that the reason why the collator function
+		# is getting mixed up with the max (encoded) text length values is
+		# because the parallelization of the collate function must be
+		# mixing the variables.
 		valid_dataset = tf.data.Dataset.from_generator(
 			valset.generator,
 			args=("validation", True),
 			output_signature=(
 				tf.TensorSpec(
 					shape=(None, n_mel_channels), dtype=tf.float32
-				), # mel
-				tf.TensorSpec(shape=(1,), dtype=tf.int64), # speaker
-				tf.TensorSpec(shape=(None,), dtype=tf.int64), # text
-				tf.TensorSpec(shape=(), dtype=tf.int64), # input_len
-				tf.TensorSpec(shape=(), dtype=tf.int64), # target_len
-				tf.TensorSpec(shape=(None,), dtype=tf.int64), # gate
-				tf.TensorSpec(shape=(None, None), dtype=tf.float32) # attn_prior
+				),
+				tf.TensorSpec(shape=(1,), dtype=tf.int64),
+				tf.TensorSpec(shape=(None,), dtype=tf.int64),
+				tf.TensorSpec(shape=(None, None), dtype=tf.float32)
 			)
 		)
+		print(list(valid_dataset.as_numpy_iterator())[0])
+		print(f"Valid max input: {valset.max_input_len}, max target: {valset.max_target_len}")
+
+		valid_collate_fn = copy.deepcopy(collate_fn)
+		valid_collate_fn.update_max_len(
+			valset.max_input_len, valset.max_target_len
+		)
+		print(f"Collate function max input: {valid_collate_fn.max_input_len}, max target: {valid_collate_fn.max_target_len}")
+		valid_dataset = valid_dataset.map(
+			lambda mel, speaker, text_enc, attn_prior:
+			tf.numpy_function(
+				valid_collate_fn, [mel, speaker, text_enc, attn_prior],
+				[
+					tf.float32, tf.int64, tf.int64, tf.int64, tf.int64, 
+					tf.int64, tf.float32
+				]
+			), 
+			num_parallel_calls=tf.data.AUTOTUNE,
+		).batch(8).prefetch(tf.data.AUTOTUNE)
+
+
 		print(list(train_dataset.as_numpy_iterator())[0])
-		# print(list(valid_dataset.as_numpy_iterator())[0])
+		print(list(valid_dataset.as_numpy_iterator())[0])
+
+	exit()
+
+	# Try method 2 (initialize all data within lists. Takes all GPU
+	# VRAM).
+	trainset.set_collate_fn(collate_fn)
+	valset.set_collate_fn(collate_fn)
+
+	#'''
+	train_dataset = tf.data.Dataset.from_generator(
+		trainset.generator,
+		args=("training", True),
+		output_signature=(
+			tf.TensorSpec(
+				shape=(None, n_mel_channels), dtype=tf.float32
+			),
+			tf.TensorSpec(shape=(1,), dtype=tf.int64),
+			tf.TensorSpec(shape=(None,), dtype=tf.int64),
+			tf.TensorSpec(shape=(), dtype=tf.int64),
+			tf.TensorSpec(shape=(), dtype=tf.int64),
+			tf.TensorSpec(shape=(None,), dtype=tf.int64),
+			tf.TensorSpec(shape=(None, None), dtype=tf.float32)
+		)
+	)
+	#'''
+	valid_dataset = tf.data.Dataset.from_generator(
+		valset.generator,
+		args=("validation", True),
+		output_signature=(
+			tf.TensorSpec(
+				shape=(None, n_mel_channels), dtype=tf.float32
+			), # mel
+			tf.TensorSpec(shape=(1,), dtype=tf.int64), # speaker
+			tf.TensorSpec(shape=(None,), dtype=tf.int64), # text
+			tf.TensorSpec(shape=(), dtype=tf.int64), # input_len
+			tf.TensorSpec(shape=(), dtype=tf.int64), # target_len
+			tf.TensorSpec(shape=(None,), dtype=tf.int64), # gate
+			tf.TensorSpec(shape=(None, None), dtype=tf.float32) # attn_prior
+		)
+	)
+	print(list(train_dataset.as_numpy_iterator())[0])
+	# print(list(valid_dataset.as_numpy_iterator())[0])
 
 
 	exit()
 
+	# Try method 1 (load data to tf.data.dataset with generator, find
+	# max lengths outside, and then using map() function to apply
+	# collate function across the data).
 	'''
 	train_dataset = tf.data.Dataset.from_generator(
 		trainset.generator,

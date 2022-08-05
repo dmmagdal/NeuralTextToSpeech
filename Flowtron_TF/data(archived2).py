@@ -103,9 +103,6 @@ class Data:
 				not os.path.exists(self.prior_cache_path)):
 			os.makedirs(self.prior_cache_path)
 
-		self.max_input_len = 0
-		self.max_target_len = 0
-
 		random.seed(seed)
 		if randomize:
 			random.shuffle(self.audiopaths_and_text)
@@ -187,23 +184,62 @@ class Data:
 		return text_norm
 
 
+	def set_collate_fn(self, collate_fn):
+		self.collate_fn = collate_fn
+
+
 	def generator(self, dataset_type, collate=True):
 		print("Generating {} dataset...".format(
 			dataset_type.decode("utf-8")
 		))
 
-		self.max_input_len = 0
-		self.max_target_len = 0
-
+		mel_tensors_list, speaker_id_tensors_list = [], []
+		text_tensors_list, attn_prior_tensors_list = [], []
 		for idx in tqdm(range(len(self.audiopaths_and_text))):
-			mels, speaker_id, text_encoded, attn_prior = self.__getitem__(idx)
-			self.max_input_len = max(
-				tf.shape(text_encoded)[0], self.max_input_len
+			item = self.__getitem__(idx)
+			mel_tensors_list.append(item[0])
+			speaker_id_tensors_list.append(item[1])
+			text_tensors_list.append(item[2])
+			attn_prior_tensors_list.append(item[3])
+
+		if not collate:
+			# Return only the data without the collate function.
+			for idx in range(len(self.audiopaths_and_text)):
+				yield (
+					mel_tensors_list[idx], 
+					speaker_id_tensors_list[idx],
+					text_tensors_list[idx],
+					attn_prior_tensors_list[idx]
+				)
+		else:
+			# Extract the input (text) and target (mel-spectrogram)
+			# lengths before applying the collate function to pad the
+			# data.
+			print("Extracting max input/target lengths...")
+			max_input_len = max(
+				[tf.shape(text)[0] for text in text_tensors_list]
+			).numpy().item()
+			max_target_len = max(
+				[tf.shape(mel)[0] for mel in mel_tensors_list]
+			).numpy().item()
+
+			# Update collate function with the maximum input and target
+			# lengths.
+			self.collate_fn.update_max_len(
+				max_input_len, max_target_len
 			)
-			self.max_target_len = max(
-				tf.shape(mels)[0], self.max_target_len
-			)
-			yield mels, speaker_id, text_encoded, attn_prior
+
+			# Apply the collate function before returning the output.
+			# Note that this will result in a different output 
+			# signature for the dataset.
+			print("Applying collate function...")
+			for idx in tqdm(range(len(self.audiopaths_and_text))):
+				yield self.collate_fn(
+					mel_tensors_list[idx], 
+					speaker_id_tensors_list[idx],
+					text_tensors_list[idx],
+					attn_prior_tensors_list[idx]
+				)
 
 
 	def __getitem__(self, index):
