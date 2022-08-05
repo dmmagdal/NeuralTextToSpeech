@@ -187,11 +187,7 @@ class Data:
 		return text_norm
 
 
-	def generator(self, dataset_type, collate=True):
-		print("Generating {} dataset...".format(
-			dataset_type.decode("utf-8")
-		))
-
+	def generator(self):
 		self.max_input_len = 0
 		self.max_target_len = 0
 
