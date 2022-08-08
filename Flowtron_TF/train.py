@@ -95,97 +95,176 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 	n_mel_channels = 80
 	trainset, valset, collate_fn = prepare_dataloaders(data_config)
 
-	with tf.device("/cpu:0"):
-		#'''
-		print("Generating training dataset...")
-		train_dataset = tf.data.Dataset.from_generator(
-			trainset.generator,
-			args=(),
-			output_signature=(
-				tf.TensorSpec(
-					shape=(None, n_mel_channels), dtype=tf.float32
-				),
-				tf.TensorSpec(shape=(1,), dtype=tf.int64),
-				tf.TensorSpec(shape=(None,), dtype=tf.int64),
-				tf.TensorSpec(shape=(None, None), dtype=tf.float32)
-			)
+	#'''
+	print("Generating training dataset...")
+	train_collate_fn = copy.deepcopy(collate_fn)
+	trainset.set_collate_fn(train_collate_fn)
+	train_dataset = tf.data.Dataset.from_generator(
+		trainset.generator,
+		output_signature=(
+			tf.TensorSpec(
+				shape=(None, n_mel_channels), dtype=tf.float32
+			),
+			tf.TensorSpec(shape=(1,), dtype=tf.int64),
+			tf.TensorSpec(shape=(None,), dtype=tf.int64),
+			tf.TensorSpec(shape=(), dtype=tf.int64),
+			tf.TensorSpec(shape=(), dtype=tf.int64),
+			tf.TensorSpec(shape=(None,), dtype=tf.int64),
+			tf.TensorSpec(shape=(None, None), dtype=tf.float32)
 		)
-		#'''
-		# Make a copy of the collate function specifically for the
-		# training dataset. Update its maximum length variables. Apply
-		# the collate function to the training dataset.
-		# -----------------------------------------------------------
-		# Leverage tf.numpy_function() to wrap around the
-		# call to the data collate function to allow for the input tensors
-		# to be converted to numpy arrays. This allows for the tensors
-		# (which are currently in graph execution mode) to be read for
-		# padding. Additional information can be found in this stack
-		# overflow response (https://stackoverflow.com/questions/
-		# 50538038/tf-data-dataset-mapmap-func-with-eager-mode).
-		train_collate_fn = copy.deepcopy(collate_fn)
-		train_collate_fn.update_max_len(
-			trainset.max_input_len, trainset.max_target_len
+	).batch(8).prefetch(tf.data.AUTOTUNE)
+	# Need to put the print or assignment statement here to allow the
+	# dataset to pause before applying collate function with map()
+	# later.
+	print(list(train_dataset.as_numpy_iterator())[0])
+	#'''
+
+	# Make a copy of the collate function specifically for the
+	# training dataset. Update its maximum length variables. Apply
+	# the collate function to the training dataset.
+	# -----------------------------------------------------------
+	# Leverage tf.numpy_function() to wrap around the
+	# call to the data collate function to allow for the input tensors
+	# to be converted to numpy arrays. This allows for the tensors
+	# (which are currently in graph execution mode) to be read for
+	# padding. Additional information can be found in this stack
+	# overflow response (https://stackoverflow.com/questions/
+	# 50538038/tf-data-dataset-mapmap-func-with-eager-mode).
+
+	# Rearranged dataset operations to be in sequence rather than in
+	# parallel. Hypothesis is that the reason why the collator function
+	# is getting mixed up with the max (encoded) text length values is
+	# because the parallelization of the collate function must be
+	# mixing the variables.
+	# UPDATE: This hypothesis turned out to not be true. The reason for
+	# the collator function to mix up variables is due to the
+	# multiprocessing/threading call from the train dataset still
+	# running when the collate function is updated and called on the
+	# validation dataset. By creating two instances of the collate
+	# function, the length variables no longer mix and the collate
+	# function can run successfully on each dataset.
+	# Make a copy of the collate function specifically for the
+	# validation dataset. Update its maximum length variables.
+	print("Generating validation dataset...")
+	valid_collate_fn = copy.deepcopy(collate_fn)
+	valset.set_collate_fn(valid_collate_fn)
+	valid_dataset = tf.data.Dataset.from_generator(
+		valset.generator,
+		output_signature=(
+			tf.TensorSpec(
+				shape=(None, n_mel_channels), dtype=tf.float32
+			),
+			tf.TensorSpec(shape=(1,), dtype=tf.int64),
+			tf.TensorSpec(shape=(None,), dtype=tf.int64),
+			tf.TensorSpec(shape=(), dtype=tf.int64),
+			tf.TensorSpec(shape=(), dtype=tf.int64),
+			tf.TensorSpec(shape=(None,), dtype=tf.int64),
+			tf.TensorSpec(shape=(None, None), dtype=tf.float32)
 		)
-		train_dataset = train_dataset.map(
-			lambda mel, speaker, text_enc, attn_prior:
-			tf.numpy_function(
-				train_collate_fn, [mel, speaker, text_enc, attn_prior],
-				[
-					tf.float32, tf.int64, tf.int64, tf.int64, tf.int64, 
-					tf.int64, tf.float32
-				]
-			), 
-			# num_parallel_calls=tf.data.AUTOTUNE,
-		).batch(8).prefetch(tf.data.AUTOTUNE)
-		#'''
+	).batch(8).prefetch(tf.data.AUTOTUNE)
+	print(list(valid_dataset.as_numpy_iterator())[0])
 
-		# Rearranged dataset operations to be in sequence rather than in
-		# parallel. Hypothesis is that the reason why the collator function
-		# is getting mixed up with the max (encoded) text length values is
-		# because the parallelization of the collate function must be
-		# mixing the variables.
-		# UPDATE: This hypothesis turned out to not be true. The reason for
-		# the collator function to mix up variables is due to the
-		# multiprocessing/threading call from the train dataset still
-		# running when the collate function is updated and called on the
-		# validation dataset. By creating two instances of the collate
-		# function, the length variables no longer mix and the collate
-		# function can run successfully on each dataset.
-		valid_dataset = tf.data.Dataset.from_generator(
-			valset.generator,
-			args=(),
-			output_signature=(
-				tf.TensorSpec(
-					shape=(None, n_mel_channels), dtype=tf.float32
-				),
-				tf.TensorSpec(shape=(1,), dtype=tf.int64),
-				tf.TensorSpec(shape=(None,), dtype=tf.int64),
-				tf.TensorSpec(shape=(None, None), dtype=tf.float32)
-			)
+	# print(list(train_dataset.as_numpy_iterator())[0])
+	# print(list(valid_dataset.as_numpy_iterator())[0])
+
+	exit()
+
+	#'''
+	print("Generating training dataset...")
+	train_dataset = tf.data.Dataset.from_generator(
+		trainset.generator,
+		output_signature=(
+			tf.TensorSpec(
+				shape=(None, n_mel_channels), dtype=tf.float32
+			),
+			tf.TensorSpec(shape=(1,), dtype=tf.int64),
+			tf.TensorSpec(shape=(None,), dtype=tf.int64),
+			tf.TensorSpec(shape=(None, None), dtype=tf.float32)
 		)
+	)
+	# Need to put the print or assignment statement here to allow the
+	# dataset to pause before applying collate function with map()
+	# later.
+	print(list(train_dataset.as_numpy_iterator())[0])
 
-		# Make a copy of the collate function specifically for the
-		# validation dataset. Update its maximum length variables. Apply
-		# the collate function to the validation dataset.
-		valid_collate_fn = copy.deepcopy(collate_fn)
-		valid_collate_fn.update_max_len(
-			valset.max_input_len, valset.max_target_len
+	#'''
+	#'''
+	# Make a copy of the collate function specifically for the
+	# training dataset. Update its maximum length variables. Apply
+	# the collate function to the training dataset.
+	# -----------------------------------------------------------
+	# Leverage tf.numpy_function() to wrap around the
+	# call to the data collate function to allow for the input tensors
+	# to be converted to numpy arrays. This allows for the tensors
+	# (which are currently in graph execution mode) to be read for
+	# padding. Additional information can be found in this stack
+	# overflow response (https://stackoverflow.com/questions/
+	# 50538038/tf-data-dataset-mapmap-func-with-eager-mode).
+	train_collate_fn = copy.deepcopy(collate_fn)
+	train_collate_fn.update_max_len(
+		trainset.max_input_len, trainset.max_target_len
+	)
+	train_dataset = train_dataset.map(
+		lambda mel, speaker, text_enc, attn_prior:
+		tf.numpy_function(
+		# tf.py_function(
+			train_collate_fn, [mel, speaker, text_enc, attn_prior],
+			[
+				tf.float32, tf.int64, tf.int64, tf.int64, tf.int64, 
+				tf.int64, tf.float32
+			]
+		), 
+		num_parallel_calls=tf.data.AUTOTUNE,
+	).batch(8).prefetch(tf.data.AUTOTUNE)
+	# '''
+
+	# Rearranged dataset operations to be in sequence rather than in
+	# parallel. Hypothesis is that the reason why the collator function
+	# is getting mixed up with the max (encoded) text length values is
+	# because the parallelization of the collate function must be
+	# mixing the variables.
+	# UPDATE: This hypothesis turned out to not be true. The reason for
+	# the collator function to mix up variables is due to the
+	# multiprocessing/threading call from the train dataset still
+	# running when the collate function is updated and called on the
+	# validation dataset. By creating two instances of the collate
+	# function, the length variables no longer mix and the collate
+	# function can run successfully on each dataset.
+	valid_dataset = tf.data.Dataset.from_generator(
+		valset.generator,
+		output_signature=(
+			tf.TensorSpec(
+				shape=(None, n_mel_channels), dtype=tf.float32
+			),
+			tf.TensorSpec(shape=(1,), dtype=tf.int64),
+			tf.TensorSpec(shape=(None,), dtype=tf.int64),
+			tf.TensorSpec(shape=(None, None), dtype=tf.float32)
 		)
-		valid_dataset = valid_dataset.map(
-			lambda mel, speaker, text_enc, attn_prior:
-			tf.numpy_function(
-				valid_collate_fn, [mel, speaker, text_enc, attn_prior],
-				[
-					tf.float32, tf.int64, tf.int64, tf.int64, tf.int64, 
-					tf.int64, tf.float32
-				]
-			), 
-			# num_parallel_calls=tf.data.AUTOTUNE,
-		).batch(8).prefetch(tf.data.AUTOTUNE)
+	)
+	print(list(valid_dataset.as_numpy_iterator())[0])
 
+	# Make a copy of the collate function specifically for the
+	# validation dataset. Update its maximum length variables. Apply
+	# the collate function to the validation dataset.
+	valid_collate_fn = copy.deepcopy(collate_fn)
+	valid_collate_fn.update_max_len(
+		valset.max_input_len, valset.max_target_len
+	)
+	valid_dataset = valid_dataset.map(
+		lambda mel, speaker, text_enc, attn_prior:
+		tf.numpy_function(
+		# tf.py_function(
+			valid_collate_fn, [mel, speaker, text_enc, attn_prior],
+			[
+				tf.float32, tf.int64, tf.int64, tf.int64, tf.int64, 
+				tf.int64, tf.float32
+			]
+		), 
+		num_parallel_calls=tf.data.AUTOTUNE,
+	).batch(8).prefetch(tf.data.AUTOTUNE)
 
-		print(list(train_dataset.as_numpy_iterator())[0])
-		print(list(valid_dataset.as_numpy_iterator())[0])
+	print(list(train_dataset.as_numpy_iterator())[0])
+	print(list(valid_dataset.as_numpy_iterator())[0])
 
 	exit()
 
@@ -293,5 +372,9 @@ if __name__ == "__main__":
 
 	if n_gpus == 1 and rank != 0:
 		raise Exception("Doing single GPU training on rank > 0")
+
+	gpus = tf.config.experimental.list_physical_devices(device_type="GPU")
+	for gpu in gpus:
+		tf.config.experimental.set_memory_growth(gpu, True)
 
 	train(n_gpus, rank, **train_config)

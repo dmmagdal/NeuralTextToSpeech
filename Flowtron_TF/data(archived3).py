@@ -191,37 +191,15 @@ class Data:
 		self.max_input_len = 0
 		self.max_target_len = 0
 
-		# Compute the maximum input (text) and target (mel-spectrogram)
-		# lengths.
-		print("Isolating max input and target lengths...")
 		for idx in tqdm(range(len(self.audiopaths_and_text))):
-			mels, _, text_encoded, _ = self.__getitem__(idx)
+			mels, speaker_id, text_encoded, attn_prior = self.__getitem__(idx)
 			self.max_input_len = max(
 				tf.shape(text_encoded)[0], self.max_input_len
 			)
 			self.max_target_len = max(
 				tf.shape(mels)[0], self.max_target_len
 			)
-
-		# Update the collate function max lengths. Must have the 
-		# collate function initialized before.
-		assert hasattr(self, "collate_fn"), "Collate function for dataset not set."
-		self.collate_fn.update_max_len(
-			self.max_input_len, self.max_target_len
-		)
-		print(f"Max input length: {self.collate_fn.max_input_len}, Max target length: {self.collate_fn.max_target_len}")
-
-		# Apply data collate function to each item in the dataset.
-		print("Applying data collator function...")
-		for idx in tqdm(range(len(self.audiopaths_and_text))):
-			mels, speaker_id, text_encoded, attn_prior = self.__getitem__(idx)
-			yield self.collate_fn(
-				mels, speaker_id, text_encoded, attn_prior
-			)
-
-
-	def set_collate_fn(self, collate_fn):
-		self.collate_fn = collate_fn
+			yield mels, speaker_id, text_encoded, attn_prior
 
 
 	def __getitem__(self, index):
