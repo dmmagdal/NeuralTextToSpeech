@@ -66,15 +66,15 @@ def _clean_text(text, cleaner_names):
 	return text
 
 
-	def _symbols_to_sequence(symbols):
-		return [
-			_symbol_to_id[s] for s in symbols if _should_keep_symbol(s)
-		]
+def _symbols_to_sequence(symbols):
+	return [
+		_symbol_to_id[s] for s in symbols if _should_keep_symbol(s)
+	]
 
 
-	def _arpabet_to_sequence(text):
-		return _symbols_to_sequence(['@' + s for s in text.split()])
+def _arpabet_to_sequence(text):
+	return _symbols_to_sequence(['@' + s for s in text.split()])
 
 
-	def _should_keep_symbol(s):
-		return s in _symbol_to_id and s is not '_' and s is not '~'
+def _should_keep_symbol(s):
+	return s in _symbol_to_id and s is not '_' and s is not '~'
