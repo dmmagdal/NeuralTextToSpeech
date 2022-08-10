@@ -13,7 +13,7 @@ from librosa.filters import mel as librosa_mel_fn
 '''
 
 
-class LinearNorm(layers.Layer);
+class LinearNorm(layers.Layer):
 	def __init__(self, dims, bias=True):
 		super(LinearNorm, self).__init__()
 		self.linear_layer = layers.Dense(dims, use_bias=bias)
@@ -30,7 +30,9 @@ class ConvNorm(layers.Layer):
 		if padding is None:
 			assert kernel_size % 2 == 1
 			padding = int(dilation * (kernel_size - 1) / 2)
-			padding = "same" if padding else "valid"
+		else:
+			padding = int(dilation * (padding - 1) / 2)
+		padding = "same" if padding else "valid"
 
 		self.conv = layers.Conv1D(
 			channels, kernel_size=kernel_size, strides=stride,
@@ -89,18 +91,18 @@ class LocationLayer(layers.Layer):
 	def __init__(self, attention_n_filters, attention_kernel_size,
 			attention_dim):
 		super(LocationLayer, self).__init__()
-			padding = int((attention_kernel_size - 1) / 2)
-			# padding = "same" if padding else "valid"
-			self.location_conv = ConvNorm(
-				attention_n_filters, kernel_size=attention_kernel_size,
-				padding=padding, bias=False, stride=1, dilation=1
-			)
-			self.location_dense = LinearNorm(attention_dim, bias=False)
+		padding = int((attention_kernel_size - 1) / 2)
+		# padding = "same" if padding else "valid"
+		self.location_conv = ConvNorm(
+			attention_n_filters, kernel_size=attention_kernel_size,
+			padding=padding, bias=False, stride=1, dilation=1
+		)
+		self.location_dense = LinearNorm(attention_dim, bias=False)
 
 
 	def call(self, attention_weights_cat):
 		processed_attention = self.location_conv(attention_weights_cat)
-		processed_attention = self.location_conv(processed_attention)
+		processed_attention = self.location_dense(processed_attention)
 		return processed_attention
 
 
@@ -113,7 +115,8 @@ class Attention(layers.Layer):
 		self.memory_layer = LinearNorm(attention_dim, bias=False)
 		self.v = LinearNorm(1, bias=False)
 		self.location_layer = LocationLayer(
-			attention_n_filters, attention_location_kernel_size,
+			attention_location_n_filters, 
+			attention_location_kernel_size,
 			attention_dim
 		)
 		self.score_mask_value = -float("inf")
@@ -146,7 +149,7 @@ class Attention(layers.Layer):
 	# @param: attention_weights_act, previous and cumulative attention
 	#	weights.
 	# @param: mask, binary mask for padded data.
-	def call(self, attention_hidden_state, memory, processed_memory
+	def call(self, attention_hidden_state, memory, processed_memory,
 			attention_weights_cat, mask):
 		alignment = self.get_alignment_energies(
 			attention_hidden_state, processed_memory, 
@@ -175,14 +178,14 @@ class Prenet(layers.Layer):
 		# 	]
 		# 	for size in sizes
 		# ]
-		layers = []
+		prenet_layers = []
 		for i in range(len(sizes)):
-			layers += [
-				LinearNorm(sizes[i], bias=False), layers.ReLU(),
+			prenet_layers += [
+				LinearNorm(sizes[i], bias=False), 
+				layers.ReLU(),
 				layers.Dropout(0.5),
 			]
-		self.model = keras.Sequential(layers)
-
+		self.model = keras.Sequential(prenet_layers)
 
 
 	def call(self, x):
@@ -192,7 +195,7 @@ class Prenet(layers.Layer):
 		return self.model(x)
 
 
-def Postnet(layers.Layer):
+class Postnet(layers.Layer):
 	def __init__(self, hparams):
 		super(Postnet, self).__init__()
 		self.convolutions = []
@@ -216,7 +219,7 @@ def Postnet(layers.Layer):
 			])
 		)
 
-		for i in range(1, hparams.posnet_n_convolutions - 1):
+		for i in range(1, hparams.postnet_n_convolutions - 1):
 			self.convolutions.append(
 				keras.Sequential([
 					ConvNorm(
@@ -555,3 +558,30 @@ class Tacotron2(keras.Model):
 			self._forward(inputs)
 		else:
 			self._inference(inputs)
+
+
+	def train_step(self, data):
+		# Unpack the data from the batch.
+		text_inputs, text_len, mels, gate, output_len = data
+
+		# Calculate max_len from text_len.
+		max_len = tf.reduce_max(text_len)
+
+		# Set input and outputs for training.
+		x = (text_inputs, text_len, mels, max_len, output_len)
+		y = (mels, gate)
+
+		with tf.GradientTape() as tape:
+			# Pass through Tacotron2 in training mode.
+			y_pred = self.call(x, training=True)
+
+			# Compute loss.
+			loss = self.loss(y, y_pred)
+
+		# Compute gradients and apply with optimizer.
+		grads = tape.gradient(loss, self.trainable_weights)
+		self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
+		self.comiled_metrics.update_state(y, y_pred)
+
+		# Return a dict mapping metric names to current value.
+		return {m.name: m.result() for m in self.metrics}

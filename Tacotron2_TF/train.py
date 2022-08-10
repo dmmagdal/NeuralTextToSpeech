@@ -14,6 +14,8 @@ import tensorflow as tf
 
 from data_utils import TextMelLoader, TextMelCollate
 from hparams import HParams
+from model import Tacotron2
+from loss_function import Tacotron2Loss
 
 
 def prepare_dataloaders(hparams):
@@ -163,6 +165,28 @@ def train(output_dir, log_dir, checkpoint_path, hparams):
 	write_tfrecords("LJSpeech_train", train_dataset)
 	write_tfrecords("LJSpeech_valid", valid_dataset)
 	'''
+
+	# Initialize checkpoint callback.
+
+	# Initialize model, optimizer, and loss function.
+	model = Tacotron2(hparams)
+	optimizer = tf.keras.optimizers.Adam(
+		learning_rate=hparams.learning_rate
+	)
+	loss = Tacotron2Loss
+
+	# Compile model and print summary.
+	model.compile(optimizer=optimizer, loss=loss)
+	# model.summary()
+
+	# Train model.
+	model.fit(
+		train_dataset, batch_size=hparams.batch_size,
+		epochs=hparams.epochs, 
+		validation_data=valid_dataset
+	)
+
+	# Save model.
 
 
 	exit()
