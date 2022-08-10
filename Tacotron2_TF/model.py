@@ -5,10 +5,12 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 from utils import get_mask_from_lengths
+'''
 from stft import STFT
 from audio_processing import dynamic_range_compression
 from audio_processing import dynamic_range_decompression
 from librosa.filters import mel as librosa_mel_fn
+'''
 
 
 class LinearNorm(layers.Layer);
@@ -40,6 +42,7 @@ class ConvNorm(layers.Layer):
 		return self.conv(signal)
 
 
+'''
 class TacotronSTFT:
 	def __init__(self, filter_length=1024, hop_length=256, 
 			win_length=1024, n_mel_channels=80, sampling_rate=22050,
@@ -79,6 +82,7 @@ class TacotronSTFT:
 		mel_output = tf.linalg.matmul(self.mel_basis, magnitudes)
 		mel_output = self.spectral_normalize(mel_output)
 		return mel_output
+'''
 
 
 class LocationLayer(layers.Layer):
