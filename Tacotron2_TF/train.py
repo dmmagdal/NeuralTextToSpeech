@@ -65,7 +65,7 @@ def train(output_dir, log_dir, checkpoint_path, hparams):
 	# Need to put the print or assignment statement here to allow the
 	# dataset to pause before applying collate function with map()
 	# later.
-	# print(list(train_dataset.as_numpy_iterator())[0])
+	print(list(train_dataset.as_numpy_iterator())[0])
 	#'''
 
 	# Make a copy of the collate function specifically for the
@@ -109,63 +109,15 @@ def train(output_dir, log_dir, checkpoint_path, hparams):
 			tf.TensorSpec(shape=(), dtype=tf.int64),
 		)
 	).batch(hparams.batch_size).prefetch(tf.data.AUTOTUNE)
-	# print(list(valid_dataset.as_numpy_iterator())[0])
-
-	# print(list(train_dataset.as_numpy_iterator())[0])
-	# print(list(valid_dataset.as_numpy_iterator())[0])
-
-
+	print(list(valid_dataset.as_numpy_iterator())[0])
 	
-	# Functions to save processed dataset as TFRecords. Currently, the
-	# processing of the LJSpeech dataset for Tacotron2 is significantly
-	# faster than for Flowtron. Given that this was originally intended
-	# for the Flowtron model which takes 2.5 to 3 hours vs 5 to 15
-	# minutes for Tacotron2, there is no need to uncomment this code.
+	# Currently, the processing of the LJSpeech dataset for Tacotron2
+	# is significantly faster than for Flowtron. Given that data
+	# loading and processing for the Flowtron model takes 2.5 to 3
+	# hours vs 5 to 15 minutes for Tacotron2, there is no need to have
+	# the code to save the processed dataset to tfrecords.
+
 	'''
-	def _float_feature(value):
-		# Return a float_list from a float.
-		return tf.train.Feature(float_list=tf.train.FloatList(value=value))
-
-
-	def _int64_feature(value):
-		# Return an int64_list from an int.
-		return tf.train.Feature(int64_list=tf.train.Int64List(value=value))
-
-
-	def serialize_example(mels, text, input_len, output_len, gate):
-		# Create a dictionary mapping the feature name to the
-		# tf.train.Example-compatible data type.
-		feature = {
-			"mels": _float_feature(mels),
-			"text": _int64_feature(text), 
-			"input_len": _int64_feature(input_len), 
-			"output_len": _int64_feature(output_len), 
-			"gate": _int64_feature(gate),
-		}
-
-		# Create a Features message using tf.train.Example.
-		example_proto = tf.train.Example(
-			features=tf.train.Features(feature=feature)
-		)
-		return example_proto.SerializeToString()
-
-
-	def write_tfrecords(name, dataset):
-		path = "./dataset_tfrecords/" + name + "/"
-		writer = tf.io.TFRecordWriter(path)
-		dataset_list = list(dataset.as_numpy_iterator())
-		for idx in range(len(dataset_list)):
-			text, input_len, mels, gate, output_len = dataset_list[idx]
-			example = serialize_example(
-				text, input_len, mels, gate, output_len 
-			)
-			writer.write(example)
-
-
-	write_tfrecords("LJSpeech_train", train_dataset)
-	write_tfrecords("LJSpeech_valid", valid_dataset)
-	'''
-
 	# Initialize checkpoint callback.
 
 	# Initialize model, optimizer, and loss function.
@@ -187,7 +139,7 @@ def train(output_dir, log_dir, checkpoint_path, hparams):
 	)
 
 	# Save model.
-
+	'''
 
 	exit()
 	
