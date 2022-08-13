@@ -10,3 +10,6 @@
 [submodule "Flowtron_TF/flowtron"]
 	path = Flowtron_TF/flowtron
 	url = https://github.com/NVIDIA/flowtron
+[submodule "FastSpeech2_TF/FastSpeech2"]
+	path = FastSpeech2_TF/FastSpeech2
+	url = https://github.com/ming024/FastSpeech2.git
