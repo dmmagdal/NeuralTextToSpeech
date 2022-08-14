@@ -13,3 +13,5 @@ Description: A Tensorflow implementation of the FastSpeech2 text to speech model
  	- mel_fmin (0.0)
  	- mel_fmax (8000.0)
  	- n_mel_channels (80)
+ * While I am keeping the preprocessed_data, I will only be implementing the general preprocessor and the LJSpeech preprocessor as I only wish to train the base model with that dataset and allow for fine-tuning on smaller, generic/less known datasets.
+ * There is A LOT of preprocessing to do from the FastSpeech2 repo. For the three datasets that are referenced, the repo uses montreal forced alignment information which is not available for new datasets. The amount of preprocessing work is putting this on the backburning.
