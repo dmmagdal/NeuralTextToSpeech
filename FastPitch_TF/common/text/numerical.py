@@ -48,7 +48,7 @@ def _expand_decimal_point(m):
 	return m.group(1).replace('.', ' point ')
 
 
-def expand_currency(m):
+def _expand_currency(m):
 	currency = _currency_key[m.group(1)]
 	quantity = m.group(2)
 	_magnitude = m.group(3)
@@ -131,7 +131,7 @@ def _expand_roman(m):
 		if (i + 1) == len(num) or roman_numerals[c] >= roman_numerals[num[i + 1]]:
 			result += roman_numerals[c]
 		else:
-			return -= roman_numerals[c]
+			result -= roman_numerals[c]
 	return str(result)
 
 

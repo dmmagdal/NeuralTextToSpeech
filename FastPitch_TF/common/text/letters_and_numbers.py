@@ -84,7 +84,7 @@ def _expand_hardware(m):
 	return "{} {}".format(quantity, measure)
 
 
-def _epxand_dimension(m):
+def _expand_dimension(m):
 	text = "".join([x for x in m.groups(0) if x != 0])
 	text = text.replace(' x ', ' by ')
 	text = text.replace('x', ' by ')

@@ -302,6 +302,24 @@ class Decoder(nn.Module):
 		self.processed_memory = self.attention_layer.memory_layer(memory)
 		self.mask = mask
 
+		print(f"initial attention_hidden shape: {self.attention_hidden.size()}")
+		print(f"initial attention_cell shape: {self.attention_cell.size()}")
+
+		print(f"initial decoder_hidden shape: {self.decoder_hidden.size()}")
+		print(f"initial attention_hidden shape: {self.decoder_cell.size()}")
+
+		print(f"initial attention_weights shape: {self.attention_weights.size()}")
+		print(f"initial attention_weights_cum shape: {self.attention_weights_cum.size()}")
+		print(f"initial attention_context shape: {self.attention_context.size()}")
+
+		print(f"initial memory shape: {self.memory.size()}")
+		print(f"initial processed_memory shape: {self.processed_memory.size()}")
+		if mask is None:
+			print(f"initial mask is none")
+		else:
+			print(f"initial mask shape: {self.mask.size()}")
+
+
 	def parse_decoder_inputs(self, decoder_inputs):
 		""" Prepares decoder inputs, i.e. mel outputs
 		PARAMS
@@ -408,13 +426,19 @@ class Decoder(nn.Module):
 		"""
 
 		decoder_input = self.get_go_frame(memory).unsqueeze(0)
+		print(f"decoder input (unsqueezed go frame) shape: {decoder_input.size()}")
 		decoder_inputs = self.parse_decoder_inputs(decoder_inputs)
+		print(f"decoder inputs shape: {decoder_inputs.size()}")
 		decoder_inputs = torch.cat((decoder_input, decoder_inputs), dim=0)
+		print(f"decoder inputs (concat with decoder_input) shape: {decoder_inputs.size()}")
 		decoder_inputs = self.prenet(decoder_inputs)
+		print(f"decoder inputs (prenet output) shape: {decoder_inputs.size()}")
 
+		print("initialize decoder states")
 		self.initialize_decoder_states(
 			memory, mask=~get_mask_from_lengths(memory_lengths))
 
+		print("loop over decoder inputs")
 		mel_outputs, gate_outputs, alignments = [], [], []
 		while len(mel_outputs) < decoder_inputs.size(0) - 1:
 			decoder_input = decoder_inputs[len(mel_outputs)]
@@ -442,9 +466,12 @@ class Decoder(nn.Module):
 		alignments: sequence of attention weights from the decoder
 		"""
 		decoder_input = self.get_go_frame(memory)
+		print(f"decoder input (unsqueezed go frame) shape: {decoder_input.size()}")
 
+		print("initialize decoder states")
 		self.initialize_decoder_states(memory, mask=None)
 
+		print("loop over decoder inputs")
 		mel_outputs, gate_outputs, alignments = [], [], []
 		while True:
 			decoder_input = self.prenet(decoder_input)

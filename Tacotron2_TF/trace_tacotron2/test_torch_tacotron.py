@@ -55,8 +55,13 @@ def main():
 	print(f"Embedding post transpose shape: {emb_out.size()}")
 	print("-" * 72)
 
+	# Note: Be sure to set layers to .eval() mode before calling
+	# inference() functions. This is required for pytorch models and
+	# does affect the output.
+
 	enc_out = encoder(emb_out, input_lens)
 	print(f"Encoder output shape: {enc_out.size()}")
+	encoder.eval()
 	enc_inf_out = encoder.inference(emb_out)
 	print(f"Encoder (inference) output shape: {enc_inf_out.size()}")	
 	print("-" * 72)
@@ -78,12 +83,54 @@ def main():
 	# tacotron2 decoder.
 	decoder = Decoder(hparams)
 
-	dec_out = decoder(enc_out, fake_mel, memory_lengths=input_lens)
-	print(f"Decoder output shape:{dec_out.size()}")
+	# Transpose mel input because decoder expects mel to be of shape
+	# (batch, n_mel_channels, mel_length).
+	dec_out = decoder(enc_out, fake_mel.transpose(1, 2), memory_lengths=input_lens)
+	print(f"Decoder output length: {len(dec_out)}")
+	for i in range(len(dec_out)):
+		print(F'\tDecoder output {i + 1} shape: {dec_out[i].size()}')
+	decoder.eval()
 	dec_inf_out = decoder.inference(enc_inf_out)
-	print(f"Decoder (inference) output shape:{dec_out.size()}")
+	print(f"Decoder (inference) output length: {len(dec_inf_out)}")
+	for i in range(len(dec_inf_out)):
+		print(F'\tDecoder (inference) output {i + 1} shape: {dec_inf_out[i].size()}')
+
+	# Decoder outputs 3 tensors:
+	# 1) mel-spec outputs
+	# 2) gate outputs
+	# 3) alignments
 
 	print("-" * 72)
+
+	# full tacotron2 model
+	tacotron2 = Tacotron2(hparams)
+
+	# tacotron2 outputs (postnet mel)
+	tac2_x, tac2_y = tacotron2.parse_batch(
+		(
+			fake_text, input_lens, fake_mel.transpose(1, 2), 
+			fake_gates, mel_lens
+		)
+	)
+	tac2_out = tacotron2(
+		tac2_x
+	)
+	print(f"Tacotron2 output len: {len(tac2_out)}")
+	for i in range(len(tac2_out)):
+		print(F'\tTacotron2 output {i + 1} shape: {tac2_out[i].size()}')
+	print("-" * 32)
+
+	# Tacotron outputs 4 tensors:
+	# 1) decoder mel-spec outputs
+	# 2) postnet mel-spec outputs
+	# 2) gate outputs
+	# 3) alignments
+
+	tacotron2.eval()
+	tac2_inf_out = tacotron2.inference(fake_text)
+	print(f"Tacotron2 (inference) output len: {len(tac2_inf_out)}")
+	for i in range(len(tac2_inf_out)):
+		print(F'\tTacotron2 (inference) output {i + 1} shape: {tac2_inf_out[i].size()}')
 
 	# Exit the program
 	exit()

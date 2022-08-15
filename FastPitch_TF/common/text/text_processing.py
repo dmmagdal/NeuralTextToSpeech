@@ -141,7 +141,7 @@ class TextProcessing(object):
 
 	def encode_text(self, text, return_all=False):
 		if self.expand_currency:
-			text = re.sub(_currency_re,_ expand_currency, text)
+			text = re.sub(_currency_re, _expand_currency, text)
 		text_clean = [
 			self.clean_text(split) if split[0] != '{' else split
 			for split in _arpa_re.findall(text)
