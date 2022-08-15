@@ -103,6 +103,7 @@ class Data:
 				not os.path.exists(self.prior_cache_path)):
 			os.makedirs(self.prior_cache_path)
 
+		self.collate_fn = None
 		self.max_input_len = 0
 		self.max_target_len = 0
 
@@ -191,37 +192,212 @@ class Data:
 		self.max_input_len = 0
 		self.max_target_len = 0
 
-		# Compute the maximum input (text) and target (mel-spectrogram)
-		# lengths.
-		print("Isolating max input and target lengths...")
-		for idx in tqdm(range(len(self.audiopaths_and_text))):
-			mels, _, text_encoded, _ = self.__getitem__(idx)
-			self.max_input_len = max(
-				tf.shape(text_encoded)[0], self.max_input_len
-			)
-			self.max_target_len = max(
-				tf.shape(mels)[0], self.max_target_len
+		# Check for preprocessed data.
+		all_exist = True
+		dataset_path = f"./processed_dataset"
+		if os.path.exists(dataset_path):
+			# Validate all files for each sample exist.
+			print("Indexing processed dataset files...")
+			for idx in range(len(self.audiopaths_and_text)):
+				basename = os.path.basename(
+					self.audiopaths_and_text[idx][0]
+				).rstrip(".wav")
+				mel_path = dataset_path + "/" + basename + "_mel.npy"
+				speaker_id_path = dataset_path + "/" + basename +\
+					"_speaker_id.npy"
+				text_encoded_path = dataset_path + "/" + basename +\
+					"_text_encoded.npy"
+				input_len_path = dataset_path + "/" + basename +\
+					"_input_len.npy"
+				output_len_path = dataset_path + "/" + basename +\
+					"_output_len.npy"
+				gate_path = dataset_path + "/" + basename + "_gate.npy"
+				attn_prior_path = dataset_path + "/" + basename +\
+					"_attn_prior.npy"
+				all_exist = all([
+					os.path.exists(mel_path), 
+					os.path.exists(text_encoded_path),
+					os.path.exists(input_len_path),
+					os.path.exists(output_len_path),
+					os.path.exists(gate_path),
+					os.path.exists(attn_prior_path)
+				])
+
+				# Break the loop if any of the files are missing.
+				if not all_exist:
+					break
+		else:
+			all_exist = False
+
+		# Preprocess the dataset only if there are missing files for
+		# the dataset.
+		if all_exist:
+			# Load each numpy array from the respective files and
+			# convert it to tensorflow tensors.
+			print("Loading pre-computed data...")
+			for idx in tqdm(range(len(self.audiopaths_and_text))):
+				basename = os.path.basename(
+					self.audiopaths_and_text[idx][0]
+				).rstrip(".wav")
+				mel_path = dataset_path + "/" + basename + "_mel.npy"
+				speaker_id_path = dataset_path + "/" + basename +\
+					"_speaker_id.npy"
+				text_encoded_path = dataset_path + "/" + basename +\
+					"_text_encoded.npy"
+				input_len_path = dataset_path + "/" + basename +\
+					"_input_len.npy"
+				output_len_path = dataset_path + "/" + basename +\
+					"_output_len.npy"
+				gate_path = dataset_path + "/" + basename + "_gate.npy"
+				attn_prior_path = dataset_path + "/" + basename +\
+					"_attn_prior.npy"
+
+				mels = tf.convert_to_tensor(
+					np.load(mel_path), dtype=tf.float32
+				)
+				speaker_id = tf.convert_to_tensor(
+					np.load(speaker_id_path), dtype=tf.int64
+				)
+				text_encoded = tf.convert_to_tensor(
+					np.load(text_encoded_path), dtype=tf.int64	
+				)
+				input_lengths = tf.convert_to_tensor(
+					np.load(input_len_path), dtype=tf.int64
+				)
+				output_lengths = tf.convert_to_tensor(
+					np.load(output_len_path), dtype=tf.int64
+				)
+				gate = tf.convert_to_tensor(
+					np.load(gate_path), dtype=tf.int64
+				)
+				attn_prior = tf.convert_to_tensor(
+					np.load(attn_prior_path), dtype=tf.float32
+				)
+				yield (
+					mels, speaker_id, text_encoded, input_lengths, 
+					output_lengths, gate, attn_prior
+				)
+		else:
+			# Compute the maximum input (text) and target
+			# (mel-spectrogram) lengths.
+			print("Isolating max input and target lengths...")
+			for idx in tqdm(range(len(self.audiopaths_and_text))):
+				mels, _, text_encoded, _ = self.__getitem__(idx)
+				self.max_input_len = max(
+					tf.shape(text_encoded)[0], self.max_input_len
+				)
+				self.max_target_len = max(
+					tf.shape(mels)[0], self.max_target_len
+				)
+
+			# Update the collate function max lengths. Must have the 
+			# collate function initialized before.
+			assert hasattr(self, "collate_fn"), "Collate function for dataset not set."
+			self.collate_fn.update_max_len(
+				self.max_input_len, self.max_target_len
 			)
 
-		# Update the collate function max lengths. Must have the 
-		# collate function initialized before.
-		assert hasattr(self, "collate_fn"), "Collate function for dataset not set."
-		self.collate_fn.update_max_len(
-			self.max_input_len, self.max_target_len
-		)
-		print(f"Max input length: {self.collate_fn.max_input_len}, Max target length: {self.collate_fn.max_target_len}")
-
-		# Apply data collate function to each item in the dataset.
-		print("Applying data collator function...")
-		for idx in tqdm(range(len(self.audiopaths_and_text))):
-			mels, speaker_id, text_encoded, attn_prior = self.__getitem__(idx)
-			yield self.collate_fn(
-				mels, speaker_id, text_encoded, attn_prior
-			)
+			# Apply data collate function to each item in the dataset.
+			print("Applying data collator function...")
+			for idx in tqdm(range(len(self.audiopaths_and_text))):
+				mels, speaker_id, text_encoded, attn_prior = self.__getitem__(idx)
+				yield self.collate_fn(
+					mels, speaker_id, text_encoded, attn_prior
+				)
 
 
 	def set_collate_fn(self, collate_fn):
 		self.collate_fn = collate_fn
+
+
+	def save_processed_dataset(self, overide=False):
+		# Verify that the collate function is set. The generator
+		# function wont work if it is not set.
+		assert self.collate_fn is not None, "Collate function for dataset is not set."
+
+		# Main folder to save the data for the dataset.
+		all_exist = True
+		dataset_path = f"./processed_dataset"
+		os.makedirs(dataset_path, exist_ok=True)
+		if os.path.exists(dataset_path):
+			# Validate all files for each sample exist.
+			print("Indexing processed dataset files...")
+			for idx in range(len(self.audiopaths_and_text)):
+				basename = os.path.basename(
+					self.audiopaths_and_text[idx][0]
+				).rstrip(".wav")
+				mel_path = dataset_path + "/" + basename + "_mel.npy"
+				speaker_id_path = dataset_path + "/" + basename +\
+					"_speaker_id.npy"
+				text_encoded_path = dataset_path + "/" + basename +\
+					"_text_encoded.npy"
+				input_len_path = dataset_path + "/" + basename +\
+					"_input_len.npy"
+				output_len_path = dataset_path + "/" + basename +\
+					"_output_len.npy"
+				gate_path = dataset_path + "/" + basename + "_gate.npy"
+				attn_prior_path = dataset_path + "/" + basename +\
+					"_attn_prior.npy"
+				all_exist = all([
+					os.path.exists(mel_path), 
+					os.path.exists(text_encoded_path),
+					os.path.exists(input_len_path),
+					os.path.exists(output_len_path),
+					os.path.exists(gate_path),
+					os.path.exists(attn_prior_path)
+				])
+
+				# Break the loop if any of the files are missing.
+				if not all_exist:
+					break
+
+		# Exit the function early if the data has already been saved
+		# and there is no intention on overriding existing saved data.
+		# This should help with performance on reducing redundant 
+		# operations.
+		if all_exist and not overide:
+			return
+
+		# Iterate through each element yielded by the generator. Keep
+		# track of the index (index value maps 1:1 with dataset
+		# audiopaths and text since the shuffling happens before this
+		# step and the path names are irrelevant after).
+		idx = 0
+		for tensor_tuple in self.generator():
+			# Isolate the base name of the file associated to the data.
+			# Use that base name to name the respective npy files for
+			# each data array.
+			basename = os.path.basename(
+				self.audiopaths_and_text[idx][0]
+			).rstrip(".wav")
+			mel_path = dataset_path + "/" + basename + "_mel.npy"
+			speaker_id_path = dataset_path + "/" + basename +\
+				"_speaker_id.npy"
+			text_encoded_path = dataset_path + "/" + basename +\
+				"_text_encoded.npy"
+			input_len_path = dataset_path + "/" + basename +\
+				"_input_len.npy"
+			output_len_path = dataset_path + "/" + basename +\
+				"_output_len.npy"
+			gate_path = dataset_path + "/" + basename + "_gate.npy"
+			attn_prior_path = dataset_path + "/" + basename +\
+				"_attn_prior.npy"
+
+			# Unpack tuple of tensors from generator.
+			(
+				mels, speaker_id, text_encoded, input_len, output_len, 
+				gate, attn_prior
+			) = tensor_tuple
+			np.save(mel_path, mels.numpy())
+			np.save(speaker_id_path, speaker_id.numpy())
+			np.save(text_encoded_path, text_encoded.numpy())
+			np.save(input_len_path, input_len.numpy())
+			np.save(output_len_path, output_len.numpy())
+			np.save(gate_path, gate.numpy())
+			np.save(attn_prior_path, attn_prior.numpy())
+
+			# Increment index.
+			idx += 1
 
 
 	def __getitem__(self, index):

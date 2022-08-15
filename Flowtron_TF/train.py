@@ -9,6 +9,7 @@ import argparse
 import json
 import os
 import copy
+import pickle
 import tensorflow as tf
 import ast
 
@@ -94,6 +95,29 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 	# .from_generator() will NOT exhause that resource).
 	n_mel_channels = 80
 	trainset, valset, collate_fn = prepare_dataloaders(data_config)
+	trainset.set_collate_fn(collate_fn)
+	trainset.save_processed_dataset()
+	valset.set_collate_fn(collate_fn)
+	valset.save_processed_dataset()
+
+	# "train_ds_save": "./processed_train_dataset",
+	# "train_ds_elemspec": "./processed_train_dataset/elemspec.pkl",
+	# "valid_ds_save": "./processed_valid_dataset",
+	# "valid_ds_elemspec": "./processed_valid_dataset/elemspec.pkl"
+
+	# val_dataset_save = "./processed_valid_dataset"
+	# val_dataset_element_spec_save = val_dataset_save + "/elemspec.pkl"
+	# if os.path.exists(val_dataset_save) and os.path.exists(val_dataset_element_spec_save):
+	# 	print("Loading dataset from file.")
+	# 	with open(val_dataset_element_spec_save, "rb") as f:
+	# 		val_dataset_element_spec = pickle.load(f)
+	# 	valid_dataset = tf.data.experimental.load(
+	# 		val_dataset_save, element_spec=val_dataset_element_spec
+	# 	)
+	# 	print(type(valid_dataset))
+	# 	print(list(valid_dataset.as_numpy_iterator())[0])
+	# 	exit()
+	# print("Initializing dataset.")
 
 	#'''
 	print("Generating training dataset...")
@@ -112,7 +136,7 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 			tf.TensorSpec(shape=(None,), dtype=tf.int64),
 			tf.TensorSpec(shape=(None, None), dtype=tf.float32)
 		)
-	).batch(8).prefetch(tf.data.AUTOTUNE)
+	)#.batch(8).prefetch(tf.data.AUTOTUNE)
 	# Need to put the print or assignment statement here to allow the
 	# dataset to pause before applying collate function with map()
 	# later.
@@ -161,11 +185,65 @@ def train(n_gpus, rank, output_directory, epochs, optim_algo,
 			tf.TensorSpec(shape=(None,), dtype=tf.int64),
 			tf.TensorSpec(shape=(None, None), dtype=tf.float32)
 		)
-	).batch(8).prefetch(tf.data.AUTOTUNE)
+	)#.batch(8).prefetch(tf.data.AUTOTUNE)
 	print(list(valid_dataset.as_numpy_iterator())[0])
 
 	# print(list(train_dataset.as_numpy_iterator())[0])
 	# print(list(valid_dataset.as_numpy_iterator())[0])
+
+	# tf.data.experimental.save(valid_dataset, val_dataset_save)
+	# with open(val_dataset_element_spec_save, "wb+") as f:
+	# 	pickle.dump(valid_dataset.element_spec, f)
+	# print(list(valid_dataset.as_numpy_iterator())[0])
+
+	'''
+	def _float_feature(value):
+		# Return a float_list from a float.
+		return tf.train.Feature(float_list=tf.train.FloatList(value=value))
+
+
+	def _int64_feature(value):
+		# Return an int64_list from an int.
+		return tf.train.Feature(int64_list=tf.train.Int64List(value=value))
+
+
+	def serialize_example(mels, speaker_id, text, input_len, output_len, gate, attn_prior):
+		# Create a dictionary mapping the feature name to the
+		# tf.train.Example-compatible data type.
+		feature = {
+			"mels": _float_feature(mels), 
+			"speaker_id": _int64_feature(speaker_id), 
+			"text": _int64_feature(text), 
+			"input_len": _int64_feature(input_len), 
+			"output_len": _int64_feature(output_len), 
+			"gate": _int64_feature(gate), 
+			"attn_prior": _float_feature(attn_prior),
+		}
+
+		# Create a Features message using tf.train.Example.
+		example_proto = tf.train.Example(
+			features=tf.train.Features(feature=feature)
+		)
+		return example_proto.SerializeToString()
+
+
+	def write_tfrecords(name, dataset):
+		path = "./dataset_tfrecords/" + name + "/"
+		writer = tf.io.TFRecordWriter(path)
+		dataset_list = list(dataset.as_numpy_iterator())
+		for idx in range(len(dataset_list)):
+			(
+				mels, speaker_id, text, input_len, output_len, 
+				gate, attn_prior 
+			) = dataset_list[idx]
+			example = serialize_example()
+			writer.write(example)
+
+
+	write_tfrecords("LJSpeech_train", train_dataset)
+	write_tfrecords("LJSpeech_valid", valid_dataset)
+	#'''
+
 
 	exit()
 
