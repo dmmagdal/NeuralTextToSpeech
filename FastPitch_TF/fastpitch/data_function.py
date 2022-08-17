@@ -246,7 +246,20 @@ class Data:
 
 
 	def get_mel(self, filename):
-		pass
+		if not self.load_pitch_from_disk:
+			audio, sampling_rate = load_wav_to_tensorflow(filename)
+			if sampling_rate != self.stft.sampling_rate:
+				raise ValueError(
+					"{} SR doesn't match target {} SR".format(
+						sampling_rate, self.stft.sampling_rate
+					)
+				)
+			audio_norm = audio / self.max_wav_value
+			audio_norm = tf.expand_dims(audio_norm, 0)
+			melspec = self.stft.mel_spectrogram(audio_norm)
+		else:
+			melspec = tf.convert_to_tensor(np.load(filename))
+		return melspec
 
 
 	def get_text(self, text):
@@ -270,15 +283,20 @@ class Data:
 
 		if self.betabinomial_tmp_dir is not None:
 			audiopath, *_ = self.audiopaths_and_text[index]
-			# fname = Path(audiopath).relative_to(self.)
-			pass
+			fname = Path(audiopath).relative_to(self.dataset_path)
+			fname = fname.with_suffix(".npy")
+			cached_fpath = Path(self.betabinomial_tmp_dir, fname)
+
+			if cached_fpath.is_file():
+				return tf.convert_to_tensor(np.load(cached_fpath))
 
 		attn_prior = beta_binomial_prior_distribution(
 			text_len, mel_len
 		)
 
 		if self.betabinomial_tmp_dir is not None:
-			pass
+			cached_fpath.parent.mkdir(parents=True, exist_ok=True)
+			np.save(cached_fpath, attn_prior.numpy())
 
 		return attn_prior
 
@@ -774,44 +792,3 @@ class DataCollate:
 		# (mel-spectrogram) lengths.
 		self.max_input_len = max_input_len
 		self.max_target_len = max_target_len
-
-
-# ===================================================================
-# Takes directory of clean audio and makes directory of spectrograms
-# Useful for making test sets
-# ===================================================================
-if __name__ == "__main__":
-	parser = argparse.ArgumentParser()
-	parser.add_argument('-c', '--config', type=str,
-						help='JSON file for configuration')
-	parser.add_argument('-f', '--filelist', type=str,
-						help='List of files to generate mels')
-	parser.add_argument('-o', '--output_dir', type=str,
-						help='Output directory')
-	args = parser.parse_args()
-
-	with open(args.config) as f:
-		data = f.read()
-	data_config = json.loads(data)["data_config"]
-	data_config["filelist_path"] = args.filelist
-	mel2samp = Data(**data_config)
-
-	# Make directory if it doesn't exist
-	if not os.path.isdir(args.output_dir):
-		os.makedirs(args.output_dir)
-		os.chmod(args.output_dir, 0o775)
-
-	filepaths_and_text = load_filepaths_and_text(args.filelist)
-	for (filepath, text, speaker_id) in filepaths_and_text:
-		print("speaker id", speaker_id)
-		print("text", text)
-		print("text encoded", mel2samp.get_text(text))
-		# audio, sr = load_wav_to_torch(filepath)
-		audio, sr = load_wav_to_tensorflow(filepath)
-		melspectrogram = mel2samp.get_mel(audio)
-		filename = os.path.basename(filepath)
-		# new_filepath = args.output_dir + '/' + filename + '.pt'
-		new_filepath = args.output_dir + '/' + filename + '.npy'
-		print(new_filepath)
-		# torch.save(melspectrogram, new_filepath)
-		np.save(new_filepath, melspectrogram.numpy())

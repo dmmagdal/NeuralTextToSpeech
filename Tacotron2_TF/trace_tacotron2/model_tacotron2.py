@@ -254,6 +254,7 @@ class Decoder(nn.Module):
 			hparams.decoder_rnn_dim + hparams.encoder_embedding_dim, 1,
 			bias=True, w_init_gain='sigmoid')
 
+
 	def get_go_frame(self, memory):
 		""" Gets all zeros frames to use as first decoder input
 		PARAMS
@@ -268,6 +269,7 @@ class Decoder(nn.Module):
 		decoder_input = Variable(memory.data.new(
 			B, self.n_mel_channels * self.n_frames_per_step).zero_())
 		return decoder_input
+
 
 	def initialize_decoder_states(self, memory, mask):
 		""" Initializes attention rnn states, decoder rnn states, attention
@@ -340,6 +342,7 @@ class Decoder(nn.Module):
 		decoder_inputs = decoder_inputs.transpose(0, 1)
 		return decoder_inputs
 
+
 	def parse_decoder_outputs(self, mel_outputs, gate_outputs, alignments):
 		""" Prepares decoder outputs for output
 		PARAMS
@@ -369,6 +372,7 @@ class Decoder(nn.Module):
 
 		return mel_outputs, gate_outputs, alignments
 
+
 	def decode(self, decoder_input):
 		""" Decoder step using stored states, attention and memory
 		PARAMS
@@ -386,6 +390,9 @@ class Decoder(nn.Module):
 			cell_input, (self.attention_hidden, self.attention_cell))
 		self.attention_hidden = F.dropout(
 			self.attention_hidden, self.p_attention_dropout, self.training)
+		print(self.attention_hidden.size())
+		print(self.attention_cell.size())
+		exit()
 
 		attention_weights_cat = torch.cat(
 			(self.attention_weights.unsqueeze(1),
@@ -409,6 +416,7 @@ class Decoder(nn.Module):
 
 		gate_prediction = self.gate_layer(decoder_hidden_attention_context)
 		return decoder_output, gate_prediction, self.attention_weights
+
 
 	def forward(self, memory, decoder_inputs, memory_lengths):
 		""" Decoder forward pass for training
@@ -443,7 +451,8 @@ class Decoder(nn.Module):
 		while len(mel_outputs) < decoder_inputs.size(0) - 1:
 			decoder_input = decoder_inputs[len(mel_outputs)]
 			mel_output, gate_output, attention_weights = self.decode(
-				decoder_input)
+				decoder_input
+			)
 			mel_outputs += [mel_output.squeeze(1)]
 			gate_outputs += [gate_output.squeeze(1)]
 			alignments += [attention_weights]
@@ -452,6 +461,7 @@ class Decoder(nn.Module):
 			mel_outputs, gate_outputs, alignments)
 
 		return mel_outputs, gate_outputs, alignments
+
 
 	def inference(self, memory):
 		""" Decoder inference
