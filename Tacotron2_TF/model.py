@@ -14,9 +14,11 @@ from librosa.filters import mel as librosa_mel_fn
 
 
 class LinearNorm(layers.Layer):
-	def __init__(self, dims, bias=True):
+	def __init__(self, dims, bias=True, activation=None):
 		super(LinearNorm, self).__init__()
-		self.linear_layer = layers.Dense(dims, use_bias=bias)
+		self.linear_layer = layers.Dense(
+			dims, use_bias=bias, activation=activation
+		)
 
 
 	def call(self, x):
@@ -25,18 +27,23 @@ class LinearNorm(layers.Layer):
 
 class ConvNorm(layers.Layer):
 	def __init__(self, channels, kernel_size=1, stride=1, padding=None,
-			dilation=1, bias=True):
+			dilation=1, bias=True, activation=None):
 		super(ConvNorm, self).__init__()
+		# print(f"padding {padding}")
 		if padding is None:
 			assert kernel_size % 2 == 1
 			padding = int(dilation * (kernel_size - 1) / 2)
 		else:
 			padding = int(dilation * (padding - 1) / 2)
-		padding = "same" if padding else "valid"
+			# print(f"padding2 {padding}")
+		padding = "same" if padding else "causal"#"valid"
+		# print(f"padding3 {padding}")
 
 		self.conv = layers.Conv1D(
 			channels, kernel_size=kernel_size, strides=stride,
-			padding=padding, dilation_rate=dilation, use_bias=bias
+			padding=padding, dilation_rate=dilation, use_bias=bias,
+			activation=activation
+			# activation="relu"
 		)
 
 
@@ -97,7 +104,9 @@ class LocationLayer(layers.Layer):
 			attention_n_filters, kernel_size=attention_kernel_size,
 			padding=padding, bias=False, stride=1, dilation=1
 		)
-		self.location_dense = LinearNorm(attention_dim, bias=False)
+		self.location_dense = LinearNorm(
+			attention_dim, bias=False, activation="tanh"
+		)
 
 
 	def call(self, attention_weights_cat):
@@ -111,8 +120,12 @@ class Attention(layers.Layer):
 			attention_location_n_filters, 
 			attention_location_kernel_size):
 		super(Attention, self).__init__()
-		self.query_layer = LinearNorm(attention_dim, bias=False)
-		self.memory_layer = LinearNorm(attention_dim, bias=False)
+		self.query_layer = LinearNorm(
+			attention_dim, bias=False, activation="tanh"
+		)
+		self.memory_layer = LinearNorm(
+			attention_dim, bias=False, activation="tanh"
+		)
 		self.v = LinearNorm(1, bias=False)
 		self.location_layer = LocationLayer(
 			attention_location_n_filters, 
@@ -131,7 +144,7 @@ class Attention(layers.Layer):
 	# @return: alignment (batch_size, max_timesteps).
 	def get_alignment_energies(self, query, processed_memory,
 			attention_weights_cat):
-		processed_query = self.query_layer(tf.expand_dims(query, -1))
+		processed_query = self.query_layer(tf.expand_dims(query, 1))
 		processed_attention_weights = self.location_layer(
 			 attention_weights_cat
 		)
@@ -185,14 +198,14 @@ class Prenet(layers.Layer):
 				layers.ReLU(),
 				layers.Dropout(0.5),
 			]
-		self.model = keras.Sequential(prenet_layers)
+		self.prenet = keras.Sequential(prenet_layers)
 
 
-	def call(self, x):
+	def call(self, x, training=None):
 		# for linear in self.layers:
 		# 	x = linear[2](linear[1](linear[0](x)))
 		# return x
-		return self.model(x)
+		return self.prenet(x)
 
 
 class Postnet(layers.Layer):
@@ -207,7 +220,8 @@ class Postnet(layers.Layer):
 					kernel_size=hparams.postnet_kernel_size,
 					stride=1,
 					padding=int((hparams.postnet_kernel_size - 1) / 2),
-					dilation=1
+					dilation=1, 
+					activation="tanh"
 				),
 				layers.BatchNormalization()
 			])
@@ -227,7 +241,8 @@ class Postnet(layers.Layer):
 						kernel_size=hparams.postnet_kernel_size,
 						stride=1,
 						padding=int((hparams.postnet_kernel_size - 1) / 2),
-						dilation=1
+						dilation=1,
+						activation="tanh"
 					),
 					layers.BatchNormalization()
 				])
@@ -247,11 +262,11 @@ class Postnet(layers.Layer):
 		)
 
 		self.convolutions.append(layers.Dropout(0.5))
-		self.model = keras.Sequential(self.convolutions)
+		self.postnet = keras.Sequential(self.convolutions)
 
 
 	def call(self, x):
-		return self.model(x)
+		return self.postnet(x)
 
 
 class Encoder(layers.Layer):
@@ -266,7 +281,8 @@ class Encoder(layers.Layer):
 					kernel_size=hparams.encoder_kernel_size,
 					stride=1,
 					padding=int((hparams.encoder_kernel_size - 1) / 2),
-					dilation=1
+					dilation=1,
+					activation="relu"
 				),
 				layers.BatchNormalization(),
 				layers.ReLU(),
@@ -278,6 +294,8 @@ class Encoder(layers.Layer):
 		self.lstm = layers.Bidirectional(
 			layers.LSTM(
 				int(hparams.encoder_embedding_dim /2),
+				return_sequences=True, # allow for return of same shape tensor in pytorch implementation
+				# return_sequences=True makes each cell per timestep emit a signal.
 			)
 		)
 
@@ -308,7 +326,7 @@ class Decoder(layers.Layer):
 		)
 
 		self.attention_rnn = layers.LSTMCell(
-			hparams.attention_rnn_dim
+			hparams.attention_rnn_dim#, return_state=True
 		)
 
 		self.attention_layer = Attention(
@@ -318,14 +336,17 @@ class Decoder(layers.Layer):
 		)
 
 		self.decoder_rnn = layers.LSTMCell(
-			hparams.decoder_rnn_dim
+			hparams.decoder_rnn_dim#, return_state=True
 		)
 
 		self.linear_projection = LinearNorm(
 			hparams.n_mel_channels * hparams.n_frames_per_step
 		)
 
-		self.gate_layer = LinearNorm(1, bias=True)
+		self.gate_layer = LinearNorm(1, bias=True, activation="sigmoid")
+
+		self.attn_dropout = layers.Dropout(self.p_attention_dropout)
+		self.decoder_dropout = layers.Dropout(self.p_decoder_dropout)
 	
 
 	def get_go_frame(self, memory):
@@ -370,9 +391,30 @@ class Decoder(layers.Layer):
 		)
 		self.mask = mask
 
+		print(f"initial attention_hidden shape: {self.attention_hidden.shape}")
+		print(f"initial attention_cell shape: {self.attention_cell.shape}")
 
-	def parse_decoder_inputs(self, decoder_rnn):
-		decoder_inputs = tf.transpose(decoder_inputs, (1, 2))
+		print(f"initial decoder_hidden shape: {self.decoder_hidden.shape}")
+		print(f"initial attention_hidden shape: {self.decoder_cell.shape}")
+
+		print(f"initial attention_weights shape: {self.attention_weights.shape}")
+		print(f"initial attention_weights_cum shape: {self.attention_weights_cum.shape}")
+		print(f"initial attention_context shape: {self.attention_context.shape}")
+
+		print(f"initial memory shape: {self.memory.shape}")
+		print(f"initial processed_memory shape: {self.processed_memory.shape}")
+		if mask is None:
+			print(f"initial mask is none")
+		else:
+			print(f"initial mask shape: {self.mask.shape}")
+
+
+	def parse_decoder_inputs(self, decoder_inputs):
+		# (B, n_mel_channels, T_out) -> (B, T_out, n_mel_channels)
+		# decoder_inputs = tf.transpose(decoder_inputs, [1, 2])
+		# decoder_inputs = tf.transpose(decoder_inputs, [0, 2, 1]) # tf.transpose requires specifying all dimensions in permutation
+		# decoder_inputs (mel-spec) is already in shape (batch_size,
+		# mel_len, n_mel_channels) format.
 		decoder_inputs = tf.reshape(
 			decoder_inputs, 
 			(
@@ -381,36 +423,105 @@ class Decoder(layers.Layer):
 				-1
 			)
 		)
-
-		decoder_inputs = tf.transpose(decoder_inputs, (0, 1))
+		# (B, T_out, n_mel_channels) -> (T_out, B, n_mel_channels)
+		# decoder_inputs = tf.transpose(decoder_inputs, [0, 1])
+		decoder_inputs = tf.transpose(decoder_inputs, [1, 0, 2])
 		return decoder_inputs
 
 
 	def parse_decoder_outputs(self, mel_outputs, gate_outputs, alignments):
-		pass
+		alignments = tf.transpose(tf.stack(alignments), [0, 1])
+
+		gate_outputs = tf.transpose(tf.stack(gate_outputs), [0, 1])
+
+		mel_outputs = tf.transpose(tf.stack(mel_outputs), [0, 1])
+
+		mel_outputs = tf.reshape(
+			tf.shape(mel_outputs)[0], -1, self.n_mel_channels
+		)
+		mel_outputs = tf.transpose(mel_outputs, [1, 2])
+		return mel_outputs, gate_outputs, alignments
 
 
 	def decode(self, decoder_input):
-		pass
+		cell_input = tf.concat((decoder_input, self.attention_context), -1)
+		self.attention_hidden, self.attention_cell = self.attention_rnn(
+			cell_input, [self.attention_hidden, self.attention_cell]
+		)
+		self.attention_hidden = self.attn_dropout(
+			self.attention_hidden, training=self.training
+		)
+		print(self.attention_hidden.shape)
+		# print(dir(self.attention_cell))
+		print(self.attention_cell._values)
+
+		attention_weights_cat = tf.concat(
+			(
+				tf.expand_dims(self.attention_weights, 1),
+				tf.expand_dims(self.attention_weights_cum, 1)
+			), axis=1
+		)
+		self.attention_context, self.attention_weights = self.attention_layer(
+			self.attention_hidden, self.memory, self.processed_memory,
+			attention_weights_cat, self.mask
+		)
+
+		self.attention_weights_cum += attention_weights
+		decoder_output = tf.concat(
+			(self.attention_hidden, self.attention_context), axis=-1
+		)
+		self.decoder_hidden, self.decoder_cell = self.decoder_rnn(
+			decoder_input, (self.decoder_hidden, self.decoder_cell)
+		)
+		self.decoder_hidden = self.decoder_dropout(
+			self.decoder_hidden, self.training
+		)
+
+		decoder_hidden_attention_context = tf.concat(
+			(self.decoder_hidden, self.attention_context),
+			axis=1
+		)
+		decoder_output = self.linear_projection(
+			decoder_hidden_attention_context
+		)
+
+		gate_prediction = self.gate_layer(decoder_hidden_attention_context)
+		return decoder_output, gate_prediction, self.attention_weights
 
 
 	# def call(self, memory, decoder_inputs, memory_lengths):
 	def call(self, inputs, training=None):
+		self.training = training
 		if training:
+			# memory (batch_size, max_len, dims) output from encoder.
+			# decoder_inputs (batch_size, mel_len, n_mel_channels) the
+			#	ground-truth mel-spectrogram
+			# memory_lengths (batch_size, text_len) lengths of all text
+			#	inputs.
 			memory, decoder_inputs, memory_lengths = inputs
+
+			# decoder_input (no 's'!) (1, batch_size, n_mels_channels *
+			#	n_frames_per_step) or (1, batch_size, n_mels_channels) if
+			#	n_frames_per_step = 1. It is also a zero tensor.
 			decoder_input = tf.expand_dims(
 				self.get_go_frame(memory), axis=0
 			)
+			print(f"decoder input (unsqueezed go frame) shape: {decoder_input.shape}")
 			decoder_inputs = self.parse_decoder_inputs(decoder_inputs)
+			print(f"decoder inputs shape: {decoder_inputs.shape}")
 			decoder_inputs = tf.concat(
 				[decoder_input, decoder_inputs], axis=0
 			)
-			decoder_inputs = self.prenet(decoder_inputs)
+			print(f"decoder inputs (concat with decoder_input) shape: {decoder_inputs.shape}")
+			decoder_inputs = self.prenet(decoder_inputs, training=training)
+			print(f"decoder inputs (prenet output) shape: {decoder_inputs.shape}")
 
+			print("initialize decoder states")
 			self.initialize_decoder_states(
 				memory, mask=~get_mask_from_lengths(memory_lengths)
 			)
 
+			print("loop over decoder inputs")
 			mel_outputs, gate_outputs, alignments = [], [], []
 			while len(mel_outputs) < tf.shape(decoder_inputs)[0] - 1:
 				decoder_input = decoder_inputs[len(mel_outputs)]
@@ -422,6 +533,8 @@ class Decoder(layers.Layer):
 				alignments += [attention_weight]
 		else:
 			memory = inputs
+
+			decoder_input = self.get_go_frame(memory)
 
 			self.initialize_decoder_states(
 				memory, mask=None

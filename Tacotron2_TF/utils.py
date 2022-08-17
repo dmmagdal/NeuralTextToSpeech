@@ -8,8 +8,9 @@ from scipy.io.wavfile import read
 
 def get_mask_from_lengths(lengths):
 	max_len = tf.math.reduce_max(lengths)
-	ids = tf.cast(tf.range(0, max_len), dtype=tf.float32)
-	mask = (ids < tf.expand_dims(lengths, axis=1))
+	# ids = tf.cast(tf.range(0, max_len), dtype=tf.float32)
+	# mask = (ids < tf.expand_dims(lengths, axis=1))
+	mask = tf.sequence_mask(lengths, max_len)
 	return mask
 
 
