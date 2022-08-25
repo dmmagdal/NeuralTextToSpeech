@@ -16,8 +16,18 @@ class PositionalEmbedding(layers.Layer):
 		self.inv_freq = inv_freq
 
 
-	def call(self, pos_seq, bsz: Optional[int]=None):
-		pass
+	def call(self, pos_seq, bsz=None):
+		sinusoid_inp = tf.linalg.matmul(
+			tf.expand_dims(pos_seq, -1), tf.expand_dims(self.inv_freq, 0)
+		)
+		pos_emb = tf.concat(
+			[tf.math.sin(sinusoid_inp), tf.math.cos(sinusoid_inp)], 
+			axis=1
+		)
+		if bsz is not None:
+			return pos_emb[None, :, :]
+		else:
+			return pos_emb[None, :, :]
 
 
 class PositionwiseFF(layers.Layer):
@@ -27,6 +37,8 @@ class PositionwiseFF(layers.Layer):
 		self.model_dim = model_dim
 		self.inner_dim = inner_dim
 		self.dropout = dropout
+
+		padding = "same" if (kernel_size // 2) else "valid"
 
 		self.core_net = keras.Sequential([
 			layers.Dense(inner_dim),
@@ -114,6 +126,7 @@ class MultiHeadAttn(layers.Layer):
 
 		self.qkv_net = layers.Dense(3 * n_head * head_dim)
 		self.drop = layers.Dropout(dropout)
+		self.drop_att = layers.Dropout(dropatt)
 		self.o_net = layers.Dense(model_dim, use_bias=False)
 		self.layer_norm = layers.LayerNormalization()
 

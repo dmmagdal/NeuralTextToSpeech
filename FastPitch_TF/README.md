@@ -25,3 +25,7 @@ The following files/folders remaining are necessary for the workflow of FastPitc
  * models.py: load models (FastPitch, WaveGLOW, or HiFi-GAN).
  * prepare_dataset.py: preprocess the dataset.
  * train.py: train FastPitch model.
+
+Notes:
+ * A single iteration through the training dataset (ljs_audio_text_train_v3.txt) takes 16 hours 45 minutes to complete (this includes all the computation that goes into each feature). 
+ * When extracting pitch, pitch length is 4 timesteps longer than the mel-spectrogram length (original implementation had a threshold of 1 timestep). This is consistent across all samples.
