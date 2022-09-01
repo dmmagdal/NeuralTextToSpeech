@@ -106,7 +106,8 @@ def estimate_pitch(wav, mel_len, method='pyin', normalize_mean=None,
 		pitch_mel, voiced_flag, voiced_probs = librosa.pyin(
 			snd.numpy(), #snd, 
 			fmin=librosa.note_to_hz('C2'),
-			fmax=librosa.note_to_hz('C7'), frame_length=1024)
+			fmax=librosa.note_to_hz('C7'), frame_length=1024
+		)
 		# print(mel_len)
 		# print(pitch_mel.shape)
 		# print(F"Diff: {np.abs(mel_len - pitch_mel.shape[0])}")
@@ -145,7 +146,7 @@ def estimate_pitch(wav, mel_len, method='pyin', normalize_mean=None,
 			pitch_mel, normalize_mean, normalize_std
 		)
 
-	# pitch_mel shape (pitch_mel_len, )
+	# pitch_mel shape (pitch_mel_len,)
 	return pitch_mel
 
 
@@ -169,7 +170,9 @@ class Data:
 			betabinomial_online_dir=None, 
 			use_betabinomial_interpolator=True,
 			pitch_online_method="pyin", **ignored):
-		self.dataset_path = dataset_path
+		# Initialize path if not already.
+		self.dataset_path = dataset_path # Sort of like the outputs dir
+		os.makedirs(self.dataset_path, exist_ok=True)
 
 		# Expect a list of filenames. <- no longer applicable.
 		# if type(filelist_path) is str:
@@ -274,7 +277,14 @@ class Data:
 
 
 	def get_mel(self, filename):
-		if not self.load_pitch_from_disk:
+		# Check that file exists.
+		base_file = os.path.basename(filename)
+		saved_mel = os.path.join(
+			self.dataset_path, 
+			base_file.replace(".wav", "_mel.npy")
+		)
+
+		if not self.load_mel_from_disk or not os.path.exists(saved_mel):
 			audio, sampling_rate = load_wav_to_tensorflow(filename)
 			if sampling_rate != self.stft.sampling_rate:
 				raise ValueError(
@@ -285,6 +295,8 @@ class Data:
 			audio_norm = audio / self.max_wav_value
 			audio_norm = tf.expand_dims(audio_norm, 0)
 			melspec = self.stft.mel_spectrogram(audio_norm)
+
+			np.save(saved_mel, melspec.numpy())
 		else:
 			melspec = tf.convert_to_tensor(np.load(filename))
 		return melspec
@@ -304,6 +316,7 @@ class Data:
 
 
 	def get_prior(self, index, mel_len, text_len):
+		'''
 		if self.use_betabinomial_interpolator:
 			return tf.convert_to_tensor(
 				self.betabinomial_interpolator(text_len, mel_len)
@@ -317,14 +330,28 @@ class Data:
 
 			if cached_fpath.is_file():
 				return tf.convert_to_tensor(np.load(cached_fpath))
+		'''
+		# Check that file exists.
+		filename, *_ = self.audiopaths_and_text[index]
+		base_file = os.path.basename(filename)
+		saved_prior = os.path.join(
+			self.dataset_path, 
+			base_file.replace(".wav", "_prior.npy")
+		)
+		if os.path.exists(saved_prior):
+			return tf.convert_to_tensor(np.load(saved_prior))
 
 		attn_prior = beta_binomial_prior_distribution(
 			text_len, mel_len
 		)
 
+		np.save(saved_prior, attn_prior.numpy())
+
+		'''
 		if self.betabinomial_tmp_dir is not None:
 			cached_fpath.parent.mkdir(parents=True, exist_ok=True)
 			np.save(cached_fpath, attn_prior.numpy())
+		'''
 
 		return attn_prior
 
@@ -337,6 +364,14 @@ class Data:
 		else:
 			spk = 0
 
+		# Check that file exists.
+		base_file = os.path.basename(audiopath)
+		saved_pitch = os.path.join(
+			self.dataset_path, 
+			base_file.replace(".wav", "_pitch.npy")
+		)
+
+		'''
 		if self.load_pitch_from_disk:
 			pitchpath = fields[0]
 			pitch = tf.convert_to_tensor(np.load(pitchpath))
@@ -349,21 +384,30 @@ class Data:
 
 		if self.pitch_tmp_dir is not None:
 			pass
+		'''
+
+		if os.path.exists(saved_pitch):
+			return tf.convert_to_tensor(np.load(saved_pitch))
 
 		# No luck so far - calculate.
 		wav = audiopath
+		'''
 		if not wav.endswith(".wav"):
 			wav = re.sub("/mels/", "/wavs/", wav)
 			wav = re.sub(".npy", ".wav", wav)
+		'''
 
 		pitch_mel = estimate_pitch(
 			wav, mel_len, self.f0_method, self.pitch_mean,
 			self.pitch_std
 		)
 
+		'''
 		if self.pitch_tmp_dir is not None and not cached_fpath.is_file():
 			cached_fpath.parent.mkdir(parents=True, exist_ok=True)
 			np.save(pitch_mel, cached_fpath)
+		'''
+		np.save(saved_pitch, pitch_mel.numpy())
 		
 		return pitch_mel
 
@@ -375,20 +419,6 @@ class Data:
 		# Compute the maximum input (text) and target
 		# (mel-spectrogram) lengths.
 		print("Isolating max input and target lengths...")
-		'''
-		for idx in tqdm(range(len(self.audiopaths_and_text))):
-			# return (
-			# 	text, mel, len(text), pitch, energy, speaker, attn_prior,
-			# 	audiopath
-			# )
-			_, mels, text_len, _, _, _, _, _ = self.__getitem__(idx)
-			self.max_input_len = max(
-				text_len, self.max_input_len
-			)
-			self.max_target_len = max(
-				tf.shape(mels)[0], self.max_target_len
-			)
-		'''
 		for idx in tqdm(range(len(self.audiopaths_and_text))):
 			# Use this (re-uses the code at the beginning of
 			# __getitem__), instead of the __getitem__ function to
@@ -399,10 +429,8 @@ class Data:
 			# when using __getitem__.
 			if self.n_speakers > 1:
 				audiopath, *extra, text, speaker = self.audiopaths_and_text[idx]
-				speaker = int(speaker)
 			else:
 				audiopath, *extra, text = self.audiopaths_and_text[idx]
-				speaker = None
 
 			mel = self.get_mel(audiopath)
 			text = self.get_text(text)
@@ -419,20 +447,18 @@ class Data:
 		# Apply data collate function to each item in the dataset.
 		print("Applying data collator function...")
 		for idx in tqdm(range(len(self.audiopaths_and_text))):
-			# mels, speaker_id, text_encoded, attn_prior = self.__getitem__(idx)
-			# yield self.collate_fn(
-			# 	mels, speaker_id, text_encoded, attn_prior
-			# )
 			yield self.collate_fn(self.__getitem__(idx))
 
 
 	# def collate_fn(self, text_encoded, mel, text_len, pitch, energy, 
 	# 		speaker_id, attn_prior, audiopath):
 	def collate_fn(self, batch):
+		# Unpack the batch tuple.
 		(
 			text_encoded, mel, text_len, pitch, energy, speaker_id, 
 			attn_prior, audiopath
 		) = batch
+
 		# The following assertions make sure that the text and mel
 		# spectrogram lengths do not exceed the maximums set in the
 		# object.
@@ -447,10 +473,6 @@ class Data:
 		
 		# Right zero-pad mel-spec.
 		n_mel_channels = mel.shape[1]
-		# if self.max_target_len % self.n_frames_per_step != 0:
-		# 	max_target_len = self.max_target_len
-		# 	max_target_len += self.n_frames_per_step - max_target_len % self.n_frames_per_step
-		# 	assert max_target_len % self.n_frames_per_step == 0
 
 		# Mel padded
 		mel_padded = np.zeros(

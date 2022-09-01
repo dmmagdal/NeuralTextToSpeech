@@ -27,5 +27,7 @@ The following files/folders remaining are necessary for the workflow of FastPitc
  * train.py: train FastPitch model.
 
 Notes:
- * A single iteration through the training dataset (ljs_audio_text_train_v3.txt) takes 16 hours 45 minutes to complete (this includes all the computation that goes into each feature). 
+ * A single iteration through the training dataset (ljs_audio_text_train_v3.txt) takes 16 hours 45 minutes to complete (this includes all the computation that goes into each feature). Once the data has already been preprocessed (and saved to disk), an iteration now takes up to 45 minutes.
  * When extracting pitch, pitch length is 4 timesteps longer than the mel-spectrogram length (original implementation had a threshold of 1 timestep). This is consistent across all samples.
+ * Loading audio from librosa is about the same as loading with tensorflow. Tensorflow is used for this project to keep things streamlined to one library. See [librosa documentation](https://librosa.org/doc/main/generated/librosa.load.html).
+ * The [librosa pyin function](https://librosa.org/doc/main/generated/librosa.pyin.html) returns the fundamental frequency (f0) estimation using probabilistic YIN (pYIN). This is then used to try to estimate the pitch.
