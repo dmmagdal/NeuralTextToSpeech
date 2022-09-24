@@ -29,7 +29,17 @@ def dynamic_range_compression(x, C=1, clip_val=1e-5):
 		tf.clip_by_value(
 			x, clip_value_min=clip_val, clip_value_max=tf.float32.max
 		) * C
-   )
+	)
+	# out1 = tf.clip_by_value(
+	# 	x, clip_value_min=clip_val, clip_value_max=tf.float32.max
+	# )
+	# out2 = out1 * C
+	# out3 = tf.math.log(out2)
+
+	# print(f"clipped matrix:\n{out1}")
+	# print(f"multiplied by constant:\n{out2}")
+	# print(f"log:\n{out3}")
+	# return out3
 
 
 class STFT:
@@ -81,16 +91,20 @@ class STFT:
 		)
 
 		# Get magnitude of spectrogram.
-		magnitude = tf.abs(spectrogram)
+		magnitude = tf.math.abs(spectrogram)
+		# print(f"magnitude:\n{magnitude}")
 
 		# Multiply the mel filterbank with the magnitude.
 		mel_spec = tf.linalg.matmul(
-			tf.math.square(magnitude), self.mel_filterbank
+			# tf.math.square(magnitude), self.mel_filterbank # Originally from MelGAN like the rest of this workflow.
+			tf.math.pow(magnitude, 0.5), self.mel_filterbank # This augmentation is from ASR Transformer workflow.
 		)
+		# print(f"mel_spec:\n{mel_spec}")
 
 		# Apply spectral normalization through the dynamic range
 		# compression normalization.
 		mel_spec = dynamic_range_compression(mel_spec)
+		# print(f"mel_spec after dynamic_range_compression:\n{mel_spec}")
 
 		# Return the mel spectrogram.
 		return mel_spec
