@@ -56,7 +56,9 @@ def main():
 	)
 
 	# Additional code.
-	dataset.__getitem__(0)
+	print(dataset.__getitem__(0))
+	# for i in dataset.__getitem__(0):
+	# 	print(i)
 	# for i in range(dataset.__len__()):
 	# 	dataset.__getitem__(i)
 

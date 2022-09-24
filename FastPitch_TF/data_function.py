@@ -295,10 +295,14 @@ class Data:
 			audio_norm = audio / self.max_wav_value
 			audio_norm = tf.expand_dims(audio_norm, 0)
 			melspec = self.stft.mel_spectrogram(audio_norm)
+			# print(f"melspec:\n{melspec}")
 
 			np.save(saved_mel, melspec.numpy())
 		else:
-			melspec = tf.convert_to_tensor(np.load(filename))
+			# melspec = tf.convert_to_tensor(np.load(filename))
+			melspec = tf.convert_to_tensor(np.load(saved_mel))
+		# exit()
+		# print("-" * 72)
 		return melspec
 
 
