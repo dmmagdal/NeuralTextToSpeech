@@ -45,7 +45,7 @@ def get_symbols(symbol_set='english_basic'):
 	return symbols
 
 
-def get_pad_ids(symbol_set='english_basic'):
+def get_pad_idx(symbol_set='english_basic'):
 	if symbol_set in {'english_basic', 'english_basic_lowercase'}:
 		return 0
 	else:
