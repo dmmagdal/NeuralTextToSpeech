@@ -1,7 +1,7 @@
 # transformer.py
 
 
-from typing as List, Optional
+from typing import List, Optional
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
@@ -81,12 +81,12 @@ class PositionwiseConvFF(layers.Layer):
 		self.core_net = keras.Sequential([
 			layers.Conv1D(
 				inner_dim, kernel_size=kernel_size, strides=1,
-				padding="same" if (kernel_size // 2) != 0 else "valid"
+				padding="same" if (kernel_size // 2) != 0 else "causal"#"valid"
 			),
 			layers.ReLU(),
 			layers.Conv1D(
 				model_dim, kernel_size=kernel_size, strides=1,
-				padding="same" if (kernel_size // 2) != 0 else "valid"
+				padding="same" if (kernel_size // 2) != 0 else "causal"#"valid"
 			),
 			layers.Dropout(dropout),
 		])
@@ -166,7 +166,7 @@ class TransformerLayer(layers.Layer):
 
 
 class FFTransformer(layers.Layer):
-	def __init__(self, n_layers, n_head, model_dim, head_dim, 
+	def __init__(self, n_layer, n_head, model_dim, head_dim, 
 			inner_dim, kernel_size, dropout, dropatt, dropemb=0.0,
 			embed_input=True, n_emb=None, emb_dim=None,
 			padding_idx=0, pre_lnorm=False):
@@ -180,15 +180,15 @@ class FFTransformer(layers.Layer):
 
 		self.embed_input = embed_input
 		if self.embed_input:
-			self.word_emb = layers.Embedding(n_emb, d_emb or model_dim)
+			self.word_emb = layers.Embedding(n_emb, emb_dim or model_dim)
 		else:
-			self.word_emb = tf.identity()
+			self.word_emb = None
 
 		self.pos_emb = PositionalEmbedding(self.model_dim)
 		self.drop = layers.Dropout(dropemb)
 		self.layers = []
 
-		for _ in range(n_layers):
+		for _ in range(n_layer):
 			self.layers.append(
 				TransformerLayer(
 					n_head, model_dim, head_dim, inner_dim, 

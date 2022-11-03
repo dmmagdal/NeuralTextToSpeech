@@ -103,7 +103,9 @@ class FastPitch(keras.Model):
 			out_fft_output_size, p_out_fft_dropout, p_out_fft_dropatt,
 			p_out_fft_dropemb, dur_predictor_kernel_size,
 			dur_predictor_filter_size, p_dur_predictor_dropout,
-			dur_predictor_n_layers, pitch_embedding_kernel_size,
+			dur_predictor_n_layers, pitch_predictor_kernel_size,
+			pitch_predictor_filter_size, p_pitch_predictor_dropout,
+			pitch_predictor_n_layers, pitch_embedding_kernel_size,
 			energy_conditioning, energy_predictor_kernel_size,
 			energy_predictor_filter_size,
 			p_energy_predictor_dropout, energy_predictor_n_layers,
@@ -112,14 +114,14 @@ class FastPitch(keras.Model):
 		super(FastPitch, self).__init__()
 
 		self.encoder = FFTransformer(
-			n_layer=in_fft_n_layers, n_head=in_fft_d_heads,
-			d_model=symbols_embedding_dim,
-			d_head=in_fft_d_head, d_inner=in_fft_conv1d_filter_size,
+			n_layer=in_fft_n_layers, n_head=in_fft_n_heads,
+			model_dim=symbols_embedding_dim, head_dim=in_fft_d_head,
+			inner_dim=in_fft_conv1d_filter_size, 
 			kernel_size=in_fft_conv1d_kernel_size,
 			dropout=p_in_fft_dropout, dropatt=p_in_fft_dropatt,
-			dropemb=p_in_fft_dropemb, embed_input=True,
-			d_embed=symbols_embedding_dim, n_embed=n_symbols,
-			padding_idx=padding_idx
+			dropemb=p_in_fft_dropemb, embed_input=True, 
+			n_emb=n_symbols, emb_dim=symbols_embedding_dim, 
+			padding_idx=padding_idx, 
 		)
 
 		if n_speakers > 1:
@@ -139,15 +141,22 @@ class FastPitch(keras.Model):
 		)
 
 		self.decoder = FFTransformer(
-
+			n_layer=out_fft_n_layers, n_head=out_fft_n_heads,
+			model_dim=symbols_embedding_dim, head_dim=out_fft_d_head,
+			inner_dim=out_fft_conv1d_filter_size,
+			kernel_size=out_fft_conv1d_kernel_size, 
+			dropout=p_out_fft_dropout, dropatt=p_out_fft_dropatt,
+			dropemb=p_out_fft_dropemb, embed_input=False,
+			emb_dim=symbols_embedding_dim
 		)
 
 		pitch_predictor = TemporalPredictor(
 			in_fft_output_size, 
-			filter_size=dur_predictor_filter_size,
-			kernel_size=dur_predictor_kernel_size,
-			dropout=p_dur_predictor_dropout,
-			n_layers=dur_predictor_n_layers
+			filter_size=pitch_predictor_filter_size,
+			kernel_size=pitch_predictor_kernel_size,
+			dropout=p_pitch_predictor_dropout,
+			n_layers=pitch_predictor_n_layers,
+			n_predictions=pitch_conditioning_formants
 		)
 
 		self.pitch_emb = layers.Conv1D(

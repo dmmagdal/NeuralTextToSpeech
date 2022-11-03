@@ -60,7 +60,7 @@ class ConvAttention(layers.Layer):
 			use_query_proj=True):
 		super(ConvAttention, self).__init__()
 		self.temperature = temperature
-		self.att_scaling_factor = np.sqrt(n_att_channels)
+		self.att_scaling_factor = np.sqrt(n_attn_channels)
 		# self.softmax = tf.nn.softmax() # Original has dim=3
 		# self.log_softmax = tf.nn.log_softmax() # Original has dim=3
 		# self.query_proj = Invertible1x1ConvLUS(n_mel_channels)
@@ -68,13 +68,13 @@ class ConvAttention(layers.Layer):
 		self.align_query_enc_type = align_query_enc_type
 		self.use_query_proj = bool(use_query_proj)
 
-		self.key_proj = layers.Sequential([
+		self.key_proj = keras.Sequential([
 			ConvNorm(
 				n_text_channels * 2, kernel_size=3, use_bias=True,
 			),
 			layers.ReLU(),
 			ConvNorm(
-				n_att_channels, kernel_size=1, use_bias=True
+				n_attn_channels, kernel_size=1, use_bias=True
 			)
 		])
 
@@ -84,7 +84,7 @@ class ConvAttention(layers.Layer):
 			# self.query_proj = Invertible1x1ConvLUS(n_mel_channels)
 			raise ValueError("Invertible1x1ConvLUS is not currently implemented or supported at this time.")
 		elif align_query_enc_type == "3xconv":
-			self.query_proj = Keras.Sequential([
+			self.query_proj = keras.Sequential([
 				ConvNorm(
 					n_mel_channels * 2, kernel_size=3, use_bias=True,
 				),
@@ -94,7 +94,7 @@ class ConvAttention(layers.Layer):
 				),
 				layers.ReLU(),
 				ConvNorm(
-					n_att_channels, kernel_size=1, use_bias=True
+					n_attn_channels, kernel_size=1, use_bias=True
 				)
 			])
 		else:

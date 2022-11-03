@@ -9,10 +9,16 @@ import argparse
 from collections import defaultdict, OrderedDict
 import numpy as np
 import tensorflow as tf
+from tensorflow import keras
 # import models
 # from fastpitch.attn_loss_function import AttentionBinarizationLoss
-from fastpitch.data_function import Data
+from attn_loss_function import AttentionBinarizationLoss
+# from fastpitch.data_function import Data
+from data_function import Data
 # from fastpitch.loss_function import FastPitchLoss
+from loss_function import FastpitchLoss
+from model import FastPitch
+from models import get_fastpitch_config, parse_model_args
 
 
 def parse_args(parser):
@@ -151,11 +157,150 @@ def main():
 	if args.p_arpabet > 0.0:
 		cmudict.initialize(args.cmudict_path, args.heteronyms_path)
 
-	tf.random.seed(args.seed)
-	np.random.seed(args.seed)
+	# tf.random.set_seed(args.seed)
+	# np.random.seed(args.seed)
+	tf.random.set_seed(1234)
+	np.random.seed(1234)
 
-	print(json.dumps(parser))
+	# Parse model specific arguments.
+	parser = parse_model_args("FastPitch", parser)
+	args, unk_args = parser.parse_known_args()
 
+	if len(unk_args) > 0:
+		raise ValueError(f"Invalid options {unk_args}")
+
+	# print(json.dumps(parser))
+	# print(parser)
+	# print(args)
+
+	attention_kl_loss = AttentionBinarizationLoss()
+	optimizers = keras.optimizers.Adam()
+	loss = FastpitchLoss()
+
+	# -----------------------------------------------------------------
+	# Data loading.
+	text_cleaners = ['english_cleaners_v2']
+	dataset_path = './ljspeech_train'
+	# filelist = './filelists/ljs_audio_text_train_v3.txt'
+	# filelist = './filelists/ljs_audio_text_val.txt'
+	train_filelist = './filelists/ljs_audio_text_train_v3.txt'
+	valid_filelist = './filelists/ljs_audio_text_val.txt'
+
+	extract_mels = True
+	extract_pitch = True
+	save_alignment_priors = True
+
+	# mel extraction
+	n_speakers = 1
+	max_wav_value = 32768.0
+	sampling_rate = 22050
+	filter_length = 1024
+	hop_length = 256
+	win_length = 1024
+	mel_fmin = 0.0
+	mel_fmax = 8000.0
+	n_mel_channels = 80
+	f0_method = 'pyin'
+	batch_size = 1
+
+	train_dataset = Data(
+		dataset_path, 
+		train_filelist, 
+		text_cleaners=text_cleaners,
+		n_mel_channels=n_mel_channels,
+		p_arpabet=0.0,
+		n_speakers=n_speakers,
+		load_mel_from_disk=False,
+		load_pitch_from_disk=False,
+		pitch_mean=None,
+		pitch_std=None,
+		max_wav_value=max_wav_value,
+		sampling_rate=sampling_rate,
+		filter_length=filter_length,
+		hop_length=hop_length,
+		win_length=win_length,
+		mel_fmin=mel_fmin,
+		mel_fmax=mel_fmax,
+		betabinomial_online_dir=None,
+		pitch_online_dir=None,
+		pitch_online_method=f0_method
+	)
+	valid_dataset = Data(
+		dataset_path, 
+		valid_filelist, 
+		text_cleaners=text_cleaners,
+		n_mel_channels=n_mel_channels,
+		p_arpabet=0.0,
+		n_speakers=n_speakers,
+		load_mel_from_disk=False,
+		load_pitch_from_disk=False,
+		pitch_mean=None,
+		pitch_std=None,
+		max_wav_value=max_wav_value,
+		sampling_rate=sampling_rate,
+		filter_length=filter_length,
+		hop_length=hop_length,
+		win_length=win_length,
+		mel_fmin=mel_fmin,
+		mel_fmax=mel_fmax,
+		betabinomial_online_dir=None,
+		pitch_online_dir=None,
+		pitch_online_method=f0_method
+	)
+
+	train_data = tf.data.Dataset.from_generator(
+		train_dataset.generator,
+		args=(),
+		output_signature=(
+			tf.TensorSpec(shape=(None,), dtype=tf.int64),			# text_encoded
+			tf.TensorSpec(shape=(), dtype=tf.int64),				# input_lengths
+			tf.TensorSpec(
+				shape=(None, n_mel_channels), dtype=tf.float32
+			),														# mel
+			tf.TensorSpec(shape=(), dtype=tf.int64),				# output_lengths
+			tf.TensorSpec(shape=(), dtype=tf.int64),				# text_length
+			tf.TensorSpec(shape=(None, None), dtype=tf.float32),	# pitch
+			tf.TensorSpec(shape=(None,), dtype=tf.float32),			# energy
+			tf.TensorSpec(shape=(), dtype=tf.int64),				# speaker id
+			tf.TensorSpec(shape=(None, None), dtype=tf.float32),	# attn prior
+			tf.TensorSpec(shape=(), dtype=tf.string),				# audiopath
+		)
+	)
+	valid_data = tf.data.Dataset.from_generator(
+		valid_dataset.generator,
+		args=(),
+		output_signature=(
+			tf.TensorSpec(shape=(None,), dtype=tf.int64),			# text_encoded
+			tf.TensorSpec(shape=(), dtype=tf.int64),				# input_lengths
+			tf.TensorSpec(
+				shape=(None, n_mel_channels), dtype=tf.float32
+			),														# mel
+			tf.TensorSpec(shape=(), dtype=tf.int64),				# output_lengths
+			tf.TensorSpec(shape=(), dtype=tf.int64),				# text_length
+			tf.TensorSpec(shape=(None, None), dtype=tf.float32),	# pitch
+			tf.TensorSpec(shape=(None,), dtype=tf.float32),			# energy
+			tf.TensorSpec(shape=(), dtype=tf.int64),				# speaker id
+			tf.TensorSpec(shape=(None, None), dtype=tf.float32),	# attn prior
+			tf.TensorSpec(shape=(), dtype=tf.string),				# audiopath
+		)
+	)
+	# -----------------------------------------------------------------
+
+	model_config = get_fastpitch_config(args)
+	print(json.dumps(model_config, indent=4))
+	model = FastPitch(**model_config)
+	exit()
+	model.compile(
+		optimizer=optimizer, loss=[loss, attention_kl_loss]
+	)
+	model.build()
+	model.summary()
+
+	model.fit(train_data, epochs=1)
+
+
+	# Exit the program.
+	exit(0)
 
 
 if __name__ == '__main__':

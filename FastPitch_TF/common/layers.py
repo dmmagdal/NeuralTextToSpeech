@@ -44,8 +44,7 @@ class ConvNorm(layers.Layer):
 
 
 class ConvReLUNorm(layers.Layer):
-	def __init__(self, dims, kernel_size=1, 
-			dropout=0.0):
+	def __init__(self, dim, kernel_size=1, dropout=0.0):
 		super(ConvReLUNorm, self).__init__()
 		self.relu = layers.ReLU()
 		# padding = "valid" if padding == 0 else "same"
