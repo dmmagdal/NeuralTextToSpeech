@@ -532,16 +532,25 @@ class Data:
 		output_lengths = tf.convert_to_tensor(
 			mel.shape[0], dtype=tf.int64
 		)
-		text_len = tf.convert_to_tensor(
-			text_encoded.shape[0], dtype=tf.float32
+		len_x = tf.convert_to_tensor(
+			text_len, dtype=tf.float32
 		)
 		audiopath = tf.convert_to_tensor(audiopath, dtype=tf.string)
 
+		# DISREGARD:
 		# text_len = len_x in official implementation. There is no real
 		# difference between len_x and input_lengths in the original
 		# code other than input_lengths being of dtype
 		# tf.int64/LongTensor vs len_x being of dtype
 		# tf.float32/FloatTensor.
+		# UPDATE:
+		# len_x is initially set to len(text_encoded) in the original
+		# implementation. HOWEVER, in the batch_to_gpu() function, it
+		# is set to torch.sum(output_lengths). This is NOT the same as
+		# tf.math.reduce_sum(text_len) here because the torch.sum() is
+		# applied to a batch of data vs here it is just a single entry.
+		# To do this right, len_x = tf.math.reduce_sum(len_x) must be
+		# added/implemented in the train_step() call for the model.
 
 		# Outputs are the following:
 		# -> padded encoded texts (dtype=tf.int64, 
@@ -550,7 +559,7 @@ class Data:
 		# -> padded mel spectrograms (dtype=tf.float32,
 		#	shape=(max_target_length, n_mel_channels))
 		# -> output lengths (dtype=tf.int64, shape=())
-		# -> text length (dtype=tf.int64, shape=())
+		# -> len_x (dtype=tf.int64, shape=())
 		# -> padded pitch (dtype=tf.float32, 
 		#	shape=(n_formants, max_target_lengths + 4))
 		# -> padded energy (dtype=tf.float32,
@@ -561,7 +570,7 @@ class Data:
 		# -> audiopath (dtype=tf.string, shape=())
 		return (
 			text_padded, input_lengths, mel_padded, output_lengths,
-			text_len, pitch_padded, energy_padded, speaker_id, 
+			len_x, pitch_padded, energy_padded, speaker_id, 
 			attn_prior_padded, audiopath
 		)
 

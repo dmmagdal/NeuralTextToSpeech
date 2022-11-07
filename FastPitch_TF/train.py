@@ -157,10 +157,10 @@ def main():
 	if args.p_arpabet > 0.0:
 		cmudict.initialize(args.cmudict_path, args.heteronyms_path)
 
-	# tf.random.set_seed(args.seed)
-	# np.random.seed(args.seed)
-	tf.random.set_seed(1234)
-	np.random.seed(1234)
+	tf.random.set_seed(args.seed)
+	np.random.seed(args.seed)
+	# tf.random.set_seed(1234)
+	# np.random.seed(1234)
 
 	# Parse model specific arguments.
 	parser = parse_model_args("FastPitch", parser)
@@ -174,8 +174,12 @@ def main():
 	# print(args)
 
 	attention_kl_loss = AttentionBinarizationLoss()
-	optimizers = keras.optimizers.Adam()
-	loss = FastpitchLoss()
+	optimizer = keras.optimizers.Adam()
+	loss = FastpitchLoss(
+		dur_predictor_loss_scale=args.dur_predictor_loss_scale,
+		pitch_predictor_loss_scale=args.pitch_predictor_loss_scale,
+		attn_loss_scale=args.attn_loss_scale
+	)
 
 	# -----------------------------------------------------------------
 	# Data loading.
@@ -289,12 +293,12 @@ def main():
 	model_config = get_fastpitch_config(args)
 	print(json.dumps(model_config, indent=4))
 	model = FastPitch(**model_config)
-	exit()
 	model.compile(
 		optimizer=optimizer, loss=[loss, attention_kl_loss]
 	)
-	model.build()
+	# model.build()
 	model.summary()
+	exit()
 
 	model.fit(train_data, epochs=1)
 

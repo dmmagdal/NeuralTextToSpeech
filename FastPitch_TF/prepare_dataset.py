@@ -12,7 +12,8 @@ from data_function import Data
 def main():
 	text_cleaners = ['english_cleaners_v2']
 	dataset_path = './ljspeech_train'
-	filelist = './filelists/ljs_audio_text_train_v3.txt'
+	# filelist = './filelists/ljs_audio_text_train_v3.txt'
+	filelist = './filelists/ljs_audio_text_val.txt'
 
 	extract_mels = True
 	extract_pitch = True
