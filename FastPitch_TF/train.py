@@ -214,7 +214,7 @@ def main():
 		n_mel_channels=n_mel_channels,
 		p_arpabet=0.0,
 		n_speakers=n_speakers,
-		load_mel_from_disk=False,
+		load_mel_from_disk=True,#False,
 		load_pitch_from_disk=False,
 		pitch_mean=None,
 		pitch_std=None,
@@ -236,7 +236,7 @@ def main():
 		n_mel_channels=n_mel_channels,
 		p_arpabet=0.0,
 		n_speakers=n_speakers,
-		load_mel_from_disk=False,
+		load_mel_from_disk=True,#False,
 		load_pitch_from_disk=False,
 		pitch_mean=None,
 		pitch_std=None,
@@ -290,18 +290,24 @@ def main():
 	)
 	# -----------------------------------------------------------------
 
+	# See to this link as to why I call tf.data.Dataset.batch() to see
+	# batch size in the model: 
+	# https://github.com/tensorflow/tensorflow/issues/43094#issuecomment-690919548
+	train_data = train_data.batch(batch_size)
+	# train_data = train_data.batch(2)
+
 	model_config = get_fastpitch_config(args)
 	print(json.dumps(model_config, indent=4))
 	model = FastPitch(**model_config)
 	model.compile(
-		optimizer=optimizer, loss=[loss, attention_kl_loss]
+		optimizer=optimizer, loss=[loss, attention_kl_loss],
+		run_eagerly=True
 	)
 	# model.build()
-	model.summary()
-	exit()
+	# model.summary()
+	# exit()
 
-	model.fit(train_data, epochs=1)
-
+	model.fit(train_data, epochs=1, batch_size=4)
 
 	# Exit the program.
 	exit(0)

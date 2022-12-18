@@ -4,10 +4,11 @@
 import tensorflow as tf
 from tensorflow import keras
 from common.utils import mask_from_lens
-from fastpitch.attn_loss_function import AttentionCTCLoss
+# from fastpitch.attn_loss_function import AttentionCTCLoss
+from attn_loss_function import AttentionCTCLoss
 
 
-def FastpitchLoss:
+class FastpitchLoss:
 	def __init__(self, dur_predictor_loss_scale=1.0,
 			pitch_predictor_loss_scale=1.0, attn_loss_scale=1.0,
 			energy_predictor_loss_scale=1.0):
@@ -43,7 +44,7 @@ def FastpitchLoss:
 		)
 		loss_fn = keras.losses.MeanSquaredError()
 		dur_pred_loss = loss_fn(log_dur_pred, log_dur_target)
-		dur_pred_loss = tf.reduce_sum(dur_pred_loss * dur_mask) /\
+		dur_pred_loss = tf.math.reduce_sum(dur_pred_loss * dur_mask) /\
 			tf.math.reduce_sum(dur_mask)
 
 		# Mel loss
@@ -55,8 +56,8 @@ def FastpitchLoss:
 		)
 		loss_fn = keras.losses.MeanSquaredError()
 		mel_loss = loss_fn(mel_out, mel_target)
-		mel_loss = tf.reduce_sum(mel_loss * mel_mask) /\
-			tf.reduce_sum(mel_mask)
+		mel_loss = tf.math.reduce_sum(mel_loss * mel_mask) /\
+			tf.math.reduce_sum(mel_mask)
 
 		# Pitch 
 		ldiff = pitch_target.shape[2] - pitch_pred.shape[2]
@@ -78,8 +79,8 @@ def FastpitchLoss:
 			energy_loss = keras.losses.MeanSquaredError()(
 				energy_target, energy_pred
 			)
-			energy_loss = tf.reduce_sum(energy_loss * dur_mask) /\
-				tf.reduce_sum(dur_mask)
+			energy_loss = tf.math.reduce_sum(energy_loss * dur_mask) /\
+				tf.math.reduce_sum(dur_mask)
 		else:
 			energy_loss = 0
 
@@ -104,7 +105,7 @@ def FastpitchLoss:
 			"attn_loss": attn_loss,
 			"dur_error": tf.math.reduce_sum(
 				tf.math.abs(dur_pred - dur_target)
-			) / tf.reduce_sum(dur_mask),
+			) / tf.math.reduce_sum(dur_mask),
 		}
 
 		if energy_pred is not None:

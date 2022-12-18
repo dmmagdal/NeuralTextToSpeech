@@ -7,9 +7,9 @@ from tensorflow import keras
 
 class AttentionCTCLoss:
 	def __init__(self, blank_logprob=-1):
-		self.log_softmax = tf.nn.log_softmax()
+		# self.log_softmax = tf.nn.log_softmax()
 		self.blank_logprob = blank_logprob
-		self.ctc_loss = tf.nn.ctc_loss()
+		# self.ctc_loss = tf.nn.ctc_loss()
 
 
 	def call(self, attn_logprob, in_lens, out_lens):
@@ -30,9 +30,11 @@ class AttentionCTCLoss:
 			curr_logprob = curr_logprob[
 				:query_lens[bid], :, :key_lens[bid]
 			]
-			curr_logprob = self.log_softmax(curr_logprob[None])[0]
+			# curr_logprob = self.log_softmax(curr_logprob[None])[0]
+			curr_logprob = tf.nn.log_softmax(curr_logprob[None])[0]
 			# input_labels, target_labels, input_len, logit_len
-			ctc_cost = self.ctc_cost(
+			# ctc_cost = self.ctc_cost(
+			ctc_cost = tf.nn.ctc_loss(
 				target_seq, curr_logprob, query_lens[bid:bid + 1],
 				key_lens[bid:bid + 1]
 			)
@@ -55,4 +57,4 @@ class AttentionBinarizationLoss:
 				)
 			)
 		)
-		return -log_sum / tf.reduce_sum(hard_attention)
+		return -log_sum / tf.math.reduce_sum(hard_attention)

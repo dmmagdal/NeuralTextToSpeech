@@ -86,9 +86,9 @@ class TemporalPredictor(layers.Layer):
 
 
 	def call(self, enc_out, enc_out_mask):
-		out = enc_out * enc_out_mask
+		out = enc_out * tf.cast(enc_out_mask, dtype=tf.float32) # Convert mask dtype from bool to float32 so that tensorflow can complete the multiplication properly
 		out = self.layers(out)
-		out = self.fc(out) * enc_out_mask
+		out = self.fc(out) * tf.cast(enc_out_mask, dtype=tf.float32) # Convert mask dtype because of previous comment
 		return out
 
 
@@ -150,7 +150,7 @@ class FastPitch(keras.Model):
 			emb_dim=symbols_embedding_dim
 		)
 
-		pitch_predictor = TemporalPredictor(
+		self.pitch_predictor = TemporalPredictor(
 			in_fft_output_size, 
 			filter_size=pitch_predictor_filter_size,
 			kernel_size=pitch_predictor_kernel_size,
@@ -230,8 +230,10 @@ class FastPitch(keras.Model):
 		(inputs, input_lens, mel_tgt, mel_lens, pitch_dense, energy_dense,
 		 speaker, attn_prior, audiopaths) = inputs
 
-		text_max_len = inputs.size(1)
-		mel_max_len = mel_tgt.size(2)
+		text_max_len = tf.shape(inputs)[0]
+		mel_max_len = tf.shape(mel_tgt)[0]
+		print(text_max_len, mel_max_len)
+		print(self.speaker_emb) # Tested on speaker_emb = None (single speaker). Have yet to test on multi-speaker
 
 		# Calculate speaker embedding
 		if self.speaker_emb is None:
@@ -245,6 +247,10 @@ class FastPitch(keras.Model):
 
 		# Input FFT
 		enc_out, enc_mask = self.encoder(inputs, conditioning=spk_emb)
+		print(enc_out)
+		print(enc_out.shape)
+		print(enc_mask)
+		print(enc_mask.shape)
 
 		# Predict durations
 		# log_dur_pred = self.duration_predictor(enc_out, enc_mask).squeeze(-1)
@@ -252,24 +258,45 @@ class FastPitch(keras.Model):
 		log_dur_pred = tf.squeeze(
 			self.duration_predictor(enc_out, enc_mask), -1
 		)
+		print(f"log_dur_pred {log_dur_pred}")
+		print(log_dur_pred.shape)
 		dur_pred = tf.clip_by_value(
 			tf.math.exp(log_dur_pred) - 1, 0, max_duration
 		)
+		print(f"dur_pred {dur_pred}")
+		print(dur_pred.shape)
 
 		# Predict pitch
-		pitch_pred = self.pitch_predictor(enc_out, enc_mask).permute(0, 2, 1)
+		pitch_pred = tf.transpose(
+			self.pitch_predictor(enc_out, enc_mask), [0, 2, 1]
+		)
+		print(f"pitch_pred {pitch_pred}")
+		print(pitch_pred.shape)
 
 		# Alignment
 		text_emb = self.encoder.word_emb(inputs)
+		print(f"text_emb {text_emb}")
+		print(text_emb.shape)
 
 		# make sure to do the alignments before folding
-		attn_mask = mask_from_lens(input_lens, max_len=text_max_len)
-		attn_mask = attn_mask[..., None] == 0
+		attn_mask = mask_from_lens(input_lens)
+		print(attn_mask)
+		print(attn_mask.shape)
+		# attn_mask = attn_mask[..., None] == 0
+		attn_mask = tf.expand_dims(attn_mask, axis=-1) == tf.cast(0, dtype=tf.bool)
+		print(attn_mask)
+		print(attn_mask.shape)
 		# attn_mask should be 1 for unused timesteps in the text_enc_w_spkvec tensor
 
 		attn_soft, attn_logprob = self.attention(
-			mel_tgt, text_emb.permute(0, 2, 1), mel_lens, attn_mask,
+			# mel_tgt, text_emb.permute(0, 2, 1), mel_lens, attn_mask,
+			mel_tgt, tf.transpose(text_emb, [0, 2, 1]), mel_lens, attn_mask,
 			key_lens=input_lens, keys_encoded=enc_out, attn_prior=attn_prior)
+		print(f"attn_soft {attn_soft}")
+		print(attn_soft.shape)
+		print(f"attn_logprob {attn_logprob}")
+		print(attn_logprob.shape)
+		exit()
 
 		attn_hard = self.binarize_attention(attn_soft, input_lens, mel_lens)
 
@@ -329,4 +356,24 @@ class FastPitch(keras.Model):
 		# Compute len_x from batch (see collate_fn() from
 		# data_function.py for more of an explanation).
 		len_x = tf.math.reduce_sum(len_x)
+		x = (
+			text_padded, input_lengths, mel_padded, output_lengths,
+			pitch_padded, energy_padded, speaker_id, attn_prior_padded,
+			audiopath
+		)
+		tf.print(tf.shape(x[0]))
+
+		y = (mel_padded, input_lengths, output_lengths)
+
+		print(f"x: {x}\ny: {y}\nnum_frames: {len_x}")
+
+		with tf.GradientTape() as tape:
+			y_pred = self(x, training=True)
+			print(f"y_pred: {y_pred}")
+			exit()
+			loss, meta = self.loss(y_pred, y)
+
+			
+
+		exit()
 		pass
