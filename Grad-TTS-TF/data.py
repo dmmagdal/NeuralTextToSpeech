@@ -60,6 +60,7 @@ class Data:
 		self.win_length = win_length
 		self.mel_fmin = mel_fmin
 		self.mel_fmax = mel_fmax
+		self.max_wav_value = 32768.0
 		random.seed(random_seed)
 		random.shuffle(self.audiopaths_and_text)
 
@@ -71,6 +72,8 @@ class Data:
 		self.load_mel_from_disk = load_mel_from_disk
 		self.n_speakers = n_speakers
 
+		os.makedirs(self.dataset_path, exist_ok=True)
+
 
 	def __getitem__(self, index):
 		# Separate filename and text
@@ -80,7 +83,8 @@ class Data:
 		else:
 			audiopath, text = self.audiopaths_and_text[index]
 			speaker = 1 #None
-		speaker = tf.convert_to_tensor([speaker], dtype=tf.int64)
+		# speaker = tf.convert_to_tensor([speaker], dtype=tf.int64)
+		speaker = tf.convert_to_tensor(speaker, dtype=tf.int64)
 
 		mel = self.get_mel(audiopath)
 		text = self.get_text(text)
@@ -235,8 +239,12 @@ class Data:
 		# 	len_x, pitch_padded, energy_padded, speaker_id, 
 		# 	attn_prior_padded, audiopath
 		# )
-		return {
-			"text": text_padded, "text_length": input_lengths,
-			"mel": mel_padded, "mel_length": output_lengths,
-			"spkr": speaker
-		}
+		# return {
+		# 	"text": text_padded, "text_length": input_lengths,
+		# 	"mel": mel_padded, "mel_length": output_lengths,
+		# 	"spkr": speaker
+		# }
+		return (
+			text_padded, input_lengths, mel_padded, output_lengths, 
+			speaker
+		)

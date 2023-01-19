@@ -39,6 +39,7 @@ class DownSample(layers.Layer):
 
 class ReZero(layers.Layer):
 	def __init__(self, fn):
+		super(ReZero, self).__init__()
 		self.fn = fn
 		self.g = self.add_weight("g", 1, "zeros")
 
@@ -49,31 +50,37 @@ class ReZero(layers.Layer):
 
 class Block(layers.Layer):
 	def __init__(self):
+		super(Block, self).__init__()
 		pass
 
 
 class ResnetBlock(layers.Layer):
 	def __init__(self):
+		super(ResnetBlock, self).__init__()
 		pass
 
 
 class LinearAttention(layers.Layer):
 	def __init__(self):
+		super(LinearAttention, self).__init__()
 		pass
 
 
 class Residual(layers.Layer):
 	def __init__(self):
+		super(Residual, self).__init__()
 		pass
 
 
 class SinusoidalPosEmb(layers.Layer):
 	def __init__(self):
+		super(SinusoidalPosEmb, self).__init__()
 		pass
 
 
 class GradLogPEstimator2D(layers.Layer):
 	def __init__(self):
+		super(GradLogPEstimator2D, self).__init__()
 		pass
 
 
@@ -97,10 +104,11 @@ class Diffusion(keras.Model):
 		self.beta_max = beta_max
 		self.pe_scale = pe_scale
 
-		self.estimator = GradLogPEstimator2D(
-			dim, n_spkrs=n_spkrs, spk_emb_dim=spk_emb_dim, 
-			pe_scale=pe_scale
-		)
+		# self.estimator = GradLogPEstimator2D(
+		# 	dim, n_spkrs=n_spkrs, spk_emb_dim=spk_emb_dim, 
+		# 	pe_scale=pe_scale
+		# )
+		self.estimator = GradLogPEstimator2D()
 
 
 	def forward_diffusion(self, x0, mask, mu, t):

@@ -7,12 +7,16 @@
 # MIT License for more details.
 
 from model.utils import fix_len_compatibility
+from text.symbols import symbols
 
 
 # data parameters
-train_filelist_path = 'resources/filelists/ljspeech/train.txt'
-valid_filelist_path = 'resources/filelists/ljspeech/valid.txt'
-test_filelist_path = 'resources/filelists/ljspeech/test.txt'
+# train_filelist_path = 'resources/filelists/ljspeech/train.txt'
+# valid_filelist_path = 'resources/filelists/ljspeech/valid.txt'
+# test_filelist_path = 'resources/filelists/ljspeech/test.txt'
+train_filelist_path = './filelists/ljs_audio_text_train_v3.txt'
+valid_filelist_path = './filelists/ljs_audio_text_val.txt'
+test_filelist_path = './filelists/ljs_audio_text_test.txt'
 cmudict_path = 'resources/cmu_dictionary'
 add_blank = True
 n_feats = 80 # n_mel_channels
@@ -25,6 +29,7 @@ hop_length = 256
 win_length = 1024
 f_min = 0
 f_max = 8000
+n_symbols = len(symbols) + 1 if add_blank else len(symbols)
 
 # encoder parameters
 n_enc_channels = 192
