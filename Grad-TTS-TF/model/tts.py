@@ -182,16 +182,48 @@ class GradTTS(keras.Model):
 		# 'logw'.
 		mu_x, logw, x_mask = self.encoder(x, x_lengths, spk)
 			
-		y_mask = tf.expand_dims(sequence_mask(y_lengths))
-		attn_mask = tf.expand_dims(x_mask, 1) * tf.expand_dims(y_mask, 2)
+		y_mask = tf.cast(
+			tf.expand_dims(sequence_mask(y_lengths), -1), dtype=x_mask.dtype
+		)
+		# attn_mask = tf.expand_dims(x_mask, 1) * tf.expand_dims(y_mask, -2)
+		# attn_mask = tf.expand_dims(x_mask, 2) * tf.expand_dims(y_mask, -1) # Not valid
+		# attn_mask = tf.expand_dims(x_mask, -1) * tf.expand_dims(y_mask, 2) # Original (Not valid)
+		attn_mask = tf.expand_dims(x_mask, -2) * tf.expand_dims(y_mask, 1)
+		print(f"y_mask {y_mask}, {y_mask.shape}")
+		print(f"attn_mask {attn_mask}, {attn_mask.shape}")
 
 		# Use MAS to find most likely alignment 'attn' between text and
 		# mel-spectrogram.
-		const = -0.5 * math.log(2 * math.pi) * self.n_feats
+		const = -0.5 * math.log(2 * math.pi) * self.n_mel_channels#self.n_feats
 		factor = -0.5 * tf.ones(mu_x.shape, dtype=mu_x.dtype)
-		y_square = tf.linalg.matmul(
-			tf.transpose(factor, [0, 2, 1]), y ** 2
-		)
+		print(f"const {const}")
+		print(f"factor {factor}, {factor.shape}")
+		print(f"y ** 2 {y ** 2}, {(y ** 2).shape}")
+		# y_square = tf.linalg.matmul(
+		# 	tf.transpose(factor, [0, 2, 1]), y ** 2 # Original (not valid)
+		# )
+		# y_square = tf.linalg.matmul(factor, y ** 2) # Not valid
+		# y_square = tf.linalg.matmul(
+		# 	tf.expand_dims(factor, 2), tf.expand_dims(y ** 2, 1) # Not valid
+		# )
+		# y_square = tf.linalg.matmul(
+		# 	tf.reshape(
+		# 		factor, 
+		# 		[
+		# 			tf.shape(factor)[0], 
+		# 			tf.shape(factor)[1] * tf.shape(factor)[2]
+		# 		]
+		# 	),
+		# 	tf.transpose(
+		# 		tf.reshape(
+		# 			y ** 2, 
+		# 			[tf.shape(y)[0], tf.shape(y)[1] * tf.shape(y)[2]]
+		# 		),
+		# 		[0, 1]
+		# 	)
+		# ) # Not valid
+		print(f"y_square {y_square}, {y_square.shape}")
+		exit()
 		y_mu_double = tf.linalg.matmul(
 			2.0 * tf.transpose((factor * mu_x), [0, 2, 1]), y
 		)
@@ -203,6 +235,7 @@ class GradTTS(keras.Model):
 		attn = monotonic_align.maximum_path(
 			log_prior, tf.squeeze(attn_mask, -1)
 		)
+		exit()
 
 		# Compute loss between predicted log-scaled durations and those
 		# obtained from MAS.
@@ -233,7 +266,9 @@ class GradTTS(keras.Model):
 				dtype=attn.dtype
 			)
 			y_cut = tf.zeros(
-				[y.shape[0], self.n_feats, out_size], dtype=y.dtype
+				# [y.shape[0], self.n_feats, out_size], dtype=y.dtype
+				[y.shape[0], self.n_mel_channels, out_size], 
+				dtype=y.dtype
 			)
 			y_cut_lengths = []
 			for i, (y_, out_offset_) in enumerate(zip(y, out_offset)):
@@ -271,6 +306,8 @@ class GradTTS(keras.Model):
 		prior_loss = tf.math.reduce_sum(
 			0.5 * ((y - mu_y) ** 2 + math.log(2 * math.pi)) * y_mask
 		)
-		prior_loss = prior_loss / (tf.math.reduce_sum(y_mask) * self.n_feats)
+		# prior_loss = prior_loss / (tf.math.reduce_sum(y_mask) * self.n_feats)
+		prior_loss = prior_loss /\
+			(tf.math.reduce_sum(y_mask) * self.n_mel_channels)
 
 		return dur_loss, prior_loss, diff_loss
