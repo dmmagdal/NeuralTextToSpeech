@@ -4,7 +4,10 @@
 import math
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras import layers
+from tensorflow.keras import layers, Sequential
+from .group_normalizations import GroupNormalization
+from .identity import Identity
+from einops import rearrange
 
 
 class Mish(layers.Layer):
@@ -20,7 +23,7 @@ class Mish(layers.Layer):
 class UpSample(layers.Layer):
 	def __init__(self, dim):
 		super(UpSample, self).__init__()
-		self.conv = layers.Conv2DTranspose(dim)
+		self.conv = layers.Conv2DTranspose(dim, 4, 2, "same")
 
 
 	def call(self, x):
@@ -41,7 +44,7 @@ class ReZero(layers.Layer):
 	def __init__(self, fn):
 		super(ReZero, self).__init__()
 		self.fn = fn
-		self.g = self.add_weight("g", 1, "zeros")
+		self.g = self.add_weight("g", 1, initializer="zeros", trainable=True)
 
 
 	def call(self, x):
@@ -49,39 +52,201 @@ class ReZero(layers.Layer):
 
 
 class Block(layers.Layer):
-	def __init__(self):
+	def __init__(self, dim_out, groups=8):
 		super(Block, self).__init__()
-		pass
+		self.block = Sequential([
+			layers.Conv2D(dim_out, 3, padding="same"),
+			GroupNormalization(groups=groups),
+			Mish()
+		])
+
+
+	def call(self, x, mask):
+		output = self.block(x * mask)
+		return output * mask
 
 
 class ResnetBlock(layers.Layer):
-	def __init__(self):
+	def __init__(self, dim, dim_out, time_emb_dim, groups=8):
 		super(ResnetBlock, self).__init__()
-		pass
+		self.mlp = Sequential([
+			Mish(),
+			layers.Dense(dim_out)
+		])
+		self.block1 = Block(dim_out,  groups=groups)
+		self.block2 = Block(dim_out,  groups=groups)
+
+		if dim != dim_out:
+			self.res_conv = layers.Conv2D(dim_out, 1)
+		else:
+			self.res_conv = Identity()
+
+
+	def call(self, x, mask, time_emb):
+		h = self.block1(x, mask)
+		h += tf.expand_dims(
+			tf.expand_dims(self.mlp(time_emb), -1),	-1
+		)
+		h = self.block2(h, mask)
+		output = h + self.res_conv(x * mask)
+		return output
 
 
 class LinearAttention(layers.Layer):
-	def __init__(self):
+	def __init__(self, dim, heads=4, dim_head=32):
 		super(LinearAttention, self).__init__()
-		pass
+		self.heads = heads
+		hidden_dim = dim_head * heads
+		self.to_qkv = layers.Conv2D(hidden_dim * 3, 1, use_bias=False)
+		self.to_out = layers.Conv2D(dim, 1)
+
+
+	def call(self, x):
+		b, c, h, w = x.shape
+		qkv = self.to_qkv(x)
+		q, k, v = rearrange(
+			qkv, 'b (qkv heads c) h w -> qkv b heads c (h w)', 
+			heads=self.heads, qkv=3
+		)
+		k = tf.nn.softmax(k, axis=-1)
+		context = tf.einsum('bhdn,bhen->bhde', k, v)
+		out = tf.einsum('bhde,bhdn->bhen', context, q)
+		out = rearrange(
+			out, 'b heads c (h w) -> b (heads c) h w', 
+			heads=self.heads, h=h, w=w
+		)
+		return self.to_out(out)
 
 
 class Residual(layers.Layer):
-	def __init__(self):
+	def __init__(self, fn):
 		super(Residual, self).__init__()
-		pass
+		self.fn = fn
+
+
+	def call(self, x, *args, **kwargs):
+		output = self.fn(x, *args, **kwargs) + x
+		return output
 
 
 class SinusoidalPosEmb(layers.Layer):
-	def __init__(self):
+	def __init__(self, dim):
 		super(SinusoidalPosEmb, self).__init__()
-		pass
+		self.dim = dim
+
+
+	def call(self, x, scale=1000):
+		half_dim = self.dim // 2
+		emb = math.log(10000) / (half_dim - 1)
+		emb = tf.math.exp(tf.range(half_dim, dtype=tf.float32) * -emb)
+		emb = scale * tf.expand_dims(x, 1) * tf.expand_dims(emb, 0)
+		emb = tf.concat((tf.math.sin(emb), tf.math.cos(emb)), axis=-1)
+		return emb
 
 
 class GradLogPEstimator2D(layers.Layer):
-	def __init__(self):
+	def __init__(self, dim, dim_mults=(1, 2, 4), groups=8, 
+			n_spkrs=None, spk_emb_dim=64, n_feats=80, pe_scale=1000):
 		super(GradLogPEstimator2D, self).__init__()
-		pass
+		self.dim = dim
+		self.dim_mults = dim_mults
+		self.groups = groups
+		self.n_spkrs = n_spkrs if not isinstance(n_spkrs, type(None)) else 1
+		self.spk_emb_dim = spk_emb_dim
+		self.pe_scale = pe_scale
+
+		if n_spkrs > 1:
+			self.spk_mlp = Sequential([
+				layers.Dense(spk_emb_dim * 4),
+				Mish(),
+				layers.Dense(n_feats)
+			])
+
+		self.time_pos_emb = SinusoidalPosEmb(dim)
+		self.mlp = Sequential([
+			layers.Dense(dim * 4), 
+			Mish(),
+			layers.Dense(dim)
+		])
+
+		dims = [
+			2 + (1 if n_spkrs > 1 else 0), 
+			*map(lambda m: dim * m, dim_mults)
+		]
+		in_out = list(zip(dims[:-1], dims[1:]))
+		self.downs = []
+		self.ups = []
+		num_resolutions = len(in_out)
+
+		for ind, (dim_in, dim_out) in enumerate(in_out):
+			is_last = ind >= (num_resolutions - 1)
+			self.downs.append([
+				ResnetBlock(dim_in, dim_out, time_emb_dim=dim),
+				ResnetBlock(dim_out, dim_out, time_emb_dim=dim),
+				Residual(ReZero(LinearAttention(dim_out))),
+				DownSample(dim_out) if not is_last else Identity()
+			])
+
+		mid_dim = dims[-1]
+		self.mid_block1 = ResnetBlock(mid_dim, mid_dim, time_emb_dim=dim)
+		self.mid_attn = Residual(ReZero(LinearAttention(mid_dim)))
+		self.mid_block2 = ResnetBlock(mid_dim, mid_dim, time_emb_dim=dim)
+
+		for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
+			self.ups.append([
+				ResnetBlock(dim_out * 2, dim_in, time_emb_dim=dim),
+				ResnetBlock(dim_in, dim_in, time_emb_dim=dim),
+				Residual(ReZero(LinearAttention(dim))),
+				UpSample(dim_in)
+			])
+
+		self.final_block = Block(dim)
+		self.final_conv = layers.Conv2D(1, 1)
+	
+
+	def call(self, x, mask, mu, t, spk=None):
+		if not isinstance(spk, type(None)):
+			s = self.spk_mlp(spk)
+
+		t = self.time_pos_emb(t, scale=self.pe_scale)
+		t = self.mlp(t)
+
+		if self.n_spkrs < 2:
+			x = tf.stack([mu, x], axis=1)
+		else:
+			s = tf.repeat(tf.expand_dims(s, -1), [1, 1, x.shape([-1])])
+			x = tf.stack([mu, x, s], axis=1)
+		mask = tf.expand_dims(mask, 1)
+
+		hiddens = []
+		masks = [mask]
+		for resnet1, resnet2, attn, downsample in self.downs:
+			mask_down = masks[-1]
+			x = resnet1(x, mask_down, t)
+			x = resnet2(x, mask_down, t)
+			x = attn(x)
+			hiddens.append(x)
+			x = downsample(x * mask_down)
+			masks.append(mask_down[:, :, :, ::2])
+
+		masks = masks[:-1]
+		mask_mid = masks[-1]
+		x = self.mid_block1(x, mask_mid, t)
+		x = self.mid_attn(x)
+		x = self.mid_block2(x, mask_mid, t)
+
+		for resnet1, resnet2, attn, upsample in self.ups:
+			mask_up = masks.pop()
+			x = tf.concat((x, hiddens.pop()), axis=1)
+			x = resnet1(x, mask_up, t)
+			x = resnet2(x, mask_up, t)
+			x = attn(x)
+			x = upsample(x * mask_up)
+
+		x = self.final_block(x, mask)
+		output = self.final_conv(x * mask)
+
+		return tf.squeeze(output * mask, 1)
 
 
 def get_noise(t, beta_init, beta_term, cumulative=False):
@@ -104,24 +269,33 @@ class Diffusion(keras.Model):
 		self.beta_max = beta_max
 		self.pe_scale = pe_scale
 
-		# self.estimator = GradLogPEstimator2D(
-		# 	dim, n_spkrs=n_spkrs, spk_emb_dim=spk_emb_dim, 
-		# 	pe_scale=pe_scale
-		# )
-		self.estimator = GradLogPEstimator2D()
+		self.estimator = GradLogPEstimator2D(
+			dim, n_spkrs=n_spkrs, spk_emb_dim=spk_emb_dim, 
+			pe_scale=pe_scale
+		)
 
 
 	def forward_diffusion(self, x0, mask, mu, t):
+		print(f"x0 {x0}, shape {x0.shape}")
+		print(f"mask {mask}, shape {mask.shape}")
+		print(f"mu {mu}, shape {mu.shape}")
+		print(f"t {t}, shape {t.shape}")
 		time = tf.expand_dims(tf.expand_dims(t, -1), -1)
+		print(f"time {time}, shape {time.shape}")
 		cum_noise = get_noise(
 			time, self.beta_min, self.beta_max, cumulative=True
 		)
+		print(f"cum_noise {cum_noise}, shape {cum_noise.shape}")
 		mean = x0 * tf.math.exp(-0.5 * cum_noise) +\
 			mu * (1.0 - tf.math.exp(-0.5 * cum_noise))
+		print(f"mean {mean}, shape {mean.shape}")
 		variance = 1.0 - tf.math.exp(-cum_noise)
+		print(f"variance {variance}, shape {variance.shape}")
 		z = tf.random.normal(x0.shape, dtype=x0.dtype)
-		xt = mean + x * tf.math.sqrt(variance)
-		return xt *  mask, z * mask
+		print(f"z {z}, shape {z.shape}")
+		xt = mean + z * tf.math.sqrt(variance)
+		print(f"xt {xt}, shape {xt.shape}")
+		return xt * mask, z * mask
 
 
 	def reverse_diffusion(self, z, mask, mu, n_timesteps, stoc=False, spk=None):
@@ -172,6 +346,7 @@ class Diffusion(keras.Model):
 
 
 	def compute_loss(self, x0, mask, mu, spk=None, offset=1e-5):
-		t = tf.random.uniform(x0.shape[0], dtype=x0.dtype)
+		print(f"x0 {x0}, shape {x0.shape}")
+		t = tf.random.uniform(shape=(x0.shape[0],), dtype=x0.dtype)
 		t = tf.clip_by_value(t, offset, 1.0 - offset)
 		return self.loss_t(x0, mask, mu, t, spk)

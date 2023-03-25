@@ -3,6 +3,7 @@
 
 import math
 import random
+import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
@@ -183,7 +184,9 @@ class GradTTS(keras.Model):
 		mu_x, logw, x_mask = self.encoder(x, x_lengths, spk)
 			
 		y_mask = tf.cast(
-			tf.expand_dims(sequence_mask(y_lengths), -1), dtype=x_mask.dtype
+			tf.expand_dims(
+				sequence_mask(y_lengths, tf.shape(y)[1]), -1
+			), dtype=x_mask.dtype
 		)
 		# attn_mask = tf.expand_dims(x_mask, 1) * tf.expand_dims(y_mask, -2)
 		# attn_mask = tf.expand_dims(x_mask, 2) * tf.expand_dims(y_mask, -1) # Not valid
@@ -206,100 +209,139 @@ class GradTTS(keras.Model):
 		# y_square = tf.linalg.matmul(
 		# 	tf.expand_dims(factor, 2), tf.expand_dims(y ** 2, 1) # Not valid
 		# )
-		# y_square = tf.linalg.matmul(
-		# 	tf.reshape(
-		# 		factor, 
-		# 		[
-		# 			tf.shape(factor)[0], 
-		# 			tf.shape(factor)[1] * tf.shape(factor)[2]
-		# 		]
-		# 	),
-		# 	tf.transpose(
-		# 		tf.reshape(
-		# 			y ** 2, 
-		# 			[tf.shape(y)[0], tf.shape(y)[1] * tf.shape(y)[2]]
-		# 		),
-		# 		[0, 1]
-		# 	)
-		# ) # Not valid
+		y_square = tf.linalg.matmul(
+			factor, tf.transpose(y ** 2, [0, 2, 1]) # Original (not valid)
+		)
 		print(f"y_square {y_square}, {y_square.shape}")
-		exit()
+		# y_mu_double = tf.linalg.matmul(
+		# 	2.0 * tf.transpose((factor * mu_x), [0, 2, 1]), y Original (not Valid)
+		# )
 		y_mu_double = tf.linalg.matmul(
-			2.0 * tf.transpose((factor * mu_x), [0, 2, 1]), y
+			2.0 * (factor * mu_x), tf.transpose(y, [0, 2, 1])
 		)
+		print(f"y_mu_double {y_mu_double}, {y_mu_double.shape}")
 		mu_square = tf.expand_dims(
-			tf.math.reduce_sum(factor * (mu_x ** 2), 1), -1
+			# tf.math.reduce_sum(factor * (mu_x ** 2), 1), -1 # Orignal
+			tf.math.reduce_sum(factor * (mu_x ** 2), -1), -1
 		)
+		print(f"mu_square {mu_square}, {mu_square.shape}")
 		log_prior = y_square - y_mu_double + mu_square + const
+		print(f"log_prior {log_prior}, {log_prior.shape}")
+		print(f"attn_mask {attn_mask}, {attn_mask.shape}")
 
 		attn = monotonic_align.maximum_path(
+			# log_prior, tf.squeeze(attn_mask, 1) # Original
 			log_prior, tf.squeeze(attn_mask, -1)
 		)
-		exit()
+		print(f"attn {attn}, {attn.shape}")
 
 		# Compute loss between predicted log-scaled durations and those
 		# obtained from MAS.
 		logw_ = tf.math.log(
-			1e-8 + tf.math.reduce_sum(tf.expand_dims(attn, -1), 1)
-		) * x_mask
+			1e-8 + tf.math.reduce_sum(tf.expand_dims(attn, 1), -1) # Original
+			# 1e-8 + tf.math.reduce_sum(tf.expand_dims(attn, -1), 1)
+		) * tf.transpose(x_mask, [0, 2, 1])
+		attn_sum = tf.math.reduce_sum(tf.expand_dims(attn, 1), -1)
+		print(f"attn_sum {attn_sum}, {attn_sum.shape}")
+		print(f"x_mask {x_mask}, {x_mask.shape}")
+		print(f"logw_ {logw_}, {logw_.shape}")
 		dur_loss = duration_loss(logw, logw_, x_lengths)
+		print(f"dur_loss {dur_loss}, {dur_loss.shape}")
 
 		# Cut a small segment of mel-spectrogram in order to increase
 		# batch size.
 		if not isinstance(out_size, type(None)):
 			max_offset = tf.clip_by_value(
-				(y_lengths - out_size), 0, tf.float32.max
+				(y_lengths - out_size), 0, tf.int32.max
 			)
+			print(f"max_offset {max_offset}, {max_offset.shape}")
 			offset_ranges = list(zip(
 				[0] * max_offset.shape[0], max_offset.numpy()
 			))
+			print(f"offset_ranges: {offset_ranges}, {len(offset_ranges)}")
 			out_offset = tf.convert_to_tensor(
-				tf.convert_to_tensor(
+				[
 					random.choice(range(start, end)) 
 					if end > start else 0
-				),
+					for start, end in offset_ranges
+				],
 				dtype=tf.int64
 			)
+			print(f"out_offset {out_offset}, {out_offset.shape}")
 
-			attn_cut = tf.zeros(
+			attn_cut = np.zeros(
+			# attn_cut = tf.zeros(
 				[attn.shape[0], attn.shape[1], out_size], 
-				dtype=attn.dtype
+				# dtype=attn.dtype
+				dtype=np.float32
 			)
-			y_cut = tf.zeros(
+			print(f"attn_cut: {attn_cut}, {attn_cut.shape}")
+			y_cut = np.zeros(
+			# y_cut = tf.zeros(
 				# [y.shape[0], self.n_feats, out_size], dtype=y.dtype
 				[y.shape[0], self.n_mel_channels, out_size], 
-				dtype=y.dtype
+				# dtype=y.dtype
+				dtype=np.float32
 			)
+			print(f"y_cut {y_cut}, {y_cut.shape}")
 			y_cut_lengths = []
 			for i, (y_, out_offset_) in enumerate(zip(y, out_offset)):
 				y_cut_length = out_size +\
 					tf.clip_by_value(
 						(y_lengths[i] - out_size), tf.float32.min, 0
 					)
+				print(f"y_cut_length {y_cut_length}, {y_cut_length.shape}")
 				y_cut_lengths.append(y_cut_length)
+				print(f"y_cut_lengths {y_cut_lengths}, {len(y_cut_lengths)}")
+				print(f"y_ type {type(y_)}")
+				print(f"y_ shape {y_.shape}")
+				print(f"y_cut shape {y_cut.shape}")
 				cut_lower, cut_upper = out_offset_, out_offset_ + y_cut_length
-				y_cut[i, :, :y_cut_length] = y_[:, cut_lower:cut_upper]
+				# y_cut[i, :, :y_cut_length] = y_.numpy()[:, cut_lower:cut_upper]
+				# attn_cut[i, :, :y_cut_length] = attn[i, :, cut_lower:cut_upper]
+				y_cut[i, :, :y_cut_length] = tf.transpose(y_, [1, 0]).numpy()[:, cut_lower:cut_upper]
+				print(f"attn shape {attn.shape}")
+				print(f"attn_cut shape {attn_cut.shape}")
 				attn_cut[i, :, :y_cut_length] = attn[i, :, cut_lower:cut_upper]
 			y_cut_lengths = tf.convert_to_tensor(
 				y_cut_lengths, dtype=tf.int64
 			)
-			y_cut_mask = tf.expand_dims(
-				sequence_mask(y_cut_lengths), -1
+			y_cut_mask = tf.cast(
+				tf.expand_dims(sequence_mask(y_cut_lengths), -1), 
+				dtype=y_mask.dtype
 			)
+			print(f"y_cut_lengths {y_cut_lengths}, shape {y_cut_lengths.shape}, dtype {y_cut_lengths.dtype}")
+			print(f"y_cut_mask {y_cut_mask}, shape {y_cut_mask.shape}, dtype {y_cut_mask.dtype}")
 
 			attn = attn_cut
 			y = y_cut
-			y_mask = y_cut_mask
+			y_mask = y_cut_mask 
+			y_mask = tf.transpose(y_mask, [0, 2, 1]) # Added to deal with the matrix multiplication in the forward diffusion process.
+			print(f"attn {attn}, shape {attn.shape}, dtype {attn.dtype}")
+			print(f"y {y}, shape {y.shape}, dtype {y.dtype}")
+			print(f"y_mask {y_mask}, shape {y_mask.shape}, dtype {y_mask.dtype}")
 
 		# Align encoded text with mel-spectrogram and get mu_y segment.
+		print(f"mu_x {mu_x.shape}")
 		mu_y = tf.linalg.matmul(
-			tf.transpose(tf.squeeze(attn, -1), [0, 2, 1]),
-			tf.transpose(mu_x, [0, 2, 1])
+			# tf.transpose(tf.squeeze(attn, -1), [0, 2, 1]),
+			# tf.transpose(tf.squeeze(attn, 1), [0, 2, 1]),
+			tf.transpose(
+				tf.squeeze(attn, 1) if 1 in attn.shape else attn, # In Pytorch, torch.tensor.squeeze(dim) is the same as torch.squeeze(tensor, dim) where the dim of size 1 is removed from the tensor. If the dim is not of size 1, then the original tensor is returned
+				[0, 2, 1]
+			),
+			# tf.transpose(mu_x, [0, 2, 1])
+			mu_x
 		)
-		mu_y = tf.transpose(mu_y, [0, 2, 1])
+		print(f"mu_y {mu_y}, shape {mu_y.shape}, dtype {mu_y.dtype}")
+		mu_y = tf.transpose(mu_y, [0, 2, 1]) # Tranpose may not be needed because decoder is a diffusion model which relies on a UNet and convolutional layers.
+		print(f"mu_y {mu_y}, shape {mu_y.shape}, dtype {mu_y.dtype}")
 
 		# Compute loss of score-based decoder.
 		diff_loss, xt = self.decoder.compute_loss(y, y_mask, mu_y, spk)
+		print(f"diff_loss {diff_loss}, shape {diff_loss.shape}")
+		print(f"xt {xt}, shape {xt}")
+		exit()
 
 		# Compute loss between aligned encoder outputs and
 		# mel-spectrogram.

@@ -44,5 +44,5 @@ def generate_path(duration, mask):
 
 def duration_loss(logw, logw_, lengths):
 	loss = tf.math.reduce_sum((logw - logw_) ** 2) /\
-		tf.math.reduce_sum(lengths)
+		tf.math.reduce_sum(tf.cast(lengths, dtype=tf.float32))
 	return loss
