@@ -23,7 +23,7 @@ def main():
 	n_speakers = 1
 	max_wav_value = 32768.0
 	sampling_rate = 22050
-	filter_length = 1024
+	filter_length = 1024 # n_fft
 	hop_length = 256
 	win_length = 1024
 	mel_fmin = 0.0
