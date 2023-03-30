@@ -3,6 +3,7 @@
 
 from typing import Optional
 
+import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers, Model
@@ -230,9 +231,9 @@ class FastPitch(keras.Model):
 		(inputs, input_lens, mel_tgt, mel_lens, pitch_dense, energy_dense,
 		 speaker, attn_prior, audiopaths) = inputs
 
-		text_max_len = tf.shape(inputs)[0]
-		mel_max_len = tf.shape(mel_tgt)[0]
-		print(text_max_len, mel_max_len)
+		text_max_len = tf.shape(inputs)[1]
+		mel_max_len = tf.shape(mel_tgt)[1]
+		print(f"max text len: {text_max_len}, max mel len: {mel_max_len}")
 		print(self.speaker_emb) # Tested on speaker_emb = None (single speaker). Have yet to test on multi-speaker
 
 		# Calculate speaker embedding
@@ -279,7 +280,7 @@ class FastPitch(keras.Model):
 		print(text_emb.shape)
 
 		# make sure to do the alignments before folding
-		attn_mask = mask_from_lens(input_lens)
+		attn_mask = mask_from_lens(input_lens, text_max_len)
 		print(attn_mask)
 		print(attn_mask.shape)
 		# attn_mask = attn_mask[..., None] == 0
@@ -288,17 +289,26 @@ class FastPitch(keras.Model):
 		print(attn_mask.shape)
 		# attn_mask should be 1 for unused timesteps in the text_enc_w_spkvec tensor
 
+		print(f"mel_tgt shape {mel_tgt.shape}")
+		print(f"text_emb shape {tf.transpose(text_emb, [0, 2, 1]).shape}")
+		print(f"mel_lens shape {mel_lens.shape}")
+		print(f"attn_mask shape {attn_mask.shape}")
+		print(f"input_lens shape {input_lens.shape}")
+		print(f"enc_out shape {enc_out.shape}")
+		print(f"attn_prior shape {attn_prior.shape}")
 		attn_soft, attn_logprob = self.attention(
 			# mel_tgt, text_emb.permute(0, 2, 1), mel_lens, attn_mask,
-			mel_tgt, tf.transpose(text_emb, [0, 2, 1]), mel_lens, attn_mask,
+			# mel_tgt, tf.transpose(text_emb, [0, 2, 1]), mel_lens, attn_mask,
+			mel_tgt, text_emb, mel_lens, attn_mask, # No transpose to allow for the correct axis to be operated on.
 			key_lens=input_lens, keys_encoded=enc_out, attn_prior=attn_prior)
 		print(f"attn_soft {attn_soft}")
 		print(attn_soft.shape)
 		print(f"attn_logprob {attn_logprob}")
 		print(attn_logprob.shape)
-		exit()
 
 		attn_hard = self.binarize_attention(attn_soft, input_lens, mel_lens)
+		print(f"attn_hard {attn_hard}\nshape {attn_hard.shape}")
+		exit()
 
 		# Viterbi --> durations
 		attn_hard_dur = attn_hard.sum(2)[:, 0, :]

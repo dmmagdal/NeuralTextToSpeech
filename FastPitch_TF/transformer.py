@@ -387,13 +387,15 @@ class FFTransformer(layers.Layer):
 		print(mask.shape)
 		print(self.pos_emb)
 		print(mask.dtype)
-		pos_seq = tf.range(inputs.shape[0], dtype=inputs.dtype)
+		pos_seq = tf.range(inputs.shape[1], dtype=inputs.dtype)
 		print(self.pos_emb(pos_seq).shape)
 		print(self.pos_emb(pos_seq).dtype)
 		print(f"pos_seq {pos_seq}\n{pos_seq.shape}\n")
+		print(f"mask {mask}\n{mask.shape}\n")
 
-		pos_seq = tf.range(inputs.shape[0], dtype=inputs.dtype) # inputs.shape[0] = len(encoded_input_text)
+		pos_seq = tf.range(inputs.shape[1], dtype=inputs.dtype) # inputs.shape[1] = len(encoded_input_text)
 		pos_emb = self.pos_emb(pos_seq) * tf.cast(mask, tf.float32)
+		print(f"pos_emb masked {pos_emb}\n{pos_emb.shape}\n")
 		if conditioning is not None:
 			out = self.drop(inputs + pos_emb + conditioning)
 		else:

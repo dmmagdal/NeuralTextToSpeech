@@ -205,7 +205,7 @@ def main():
 	mel_fmax = 8000.0
 	n_mel_channels = 80
 	f0_method = 'pyin'
-	batch_size = 1
+	batch_size = 4#1
 
 	train_dataset = Data(
 		dataset_path, 
@@ -293,7 +293,7 @@ def main():
 	# See to this link as to why I call tf.data.Dataset.batch() to see
 	# batch size in the model: 
 	# https://github.com/tensorflow/tensorflow/issues/43094#issuecomment-690919548
-	train_data = train_data.batch(batch_size)
+	train_data = train_data.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 	# train_data = train_data.batch(2)
 
 	model_config = get_fastpitch_config(args)

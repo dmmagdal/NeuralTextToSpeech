@@ -5,8 +5,9 @@ from collections import defaultdict, OrderedDict
 import tensorflow as tf
 
 
-def mask_from_lens(lengths):
-	max_len = tf.math.reduce_max(lengths).numpy().item()
+def mask_from_lens(lengths, max_len=None):
+	if max_len is None:
+		max_len = tf.math.reduce_max(lengths).numpy().item()
 	mask = tf.sequence_mask(lengths, max_len, dtype=tf.bool)
 	return mask
 
