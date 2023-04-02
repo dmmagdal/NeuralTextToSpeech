@@ -29,7 +29,6 @@ class FastpitchLoss(keras.losses.Loss):
 		) = model_out
 
 		(mel_target, input_lens, output_lens) = targets
-		print(f"mel_target {mel_target.shape}")
 
 		dur_target = attn_dur
 		dur_lens = input_lens
@@ -54,7 +53,6 @@ class FastpitchLoss(keras.losses.Loss):
 		# ) / tf.math.reduce_sum(dur_mask)
 
 		# Mel loss
-		print(f"mel target {mel_target.shape} mel_out {mel_out.shape}")
 		ldiff = mel_target.shape[1] - mel_out.shape[1]
 		mel_pad = [[0, 0], [0, ldiff], [0, 0]]
 		mel_out = tf.pad(mel_out, mel_pad, constant_values=0.0)
@@ -67,7 +65,6 @@ class FastpitchLoss(keras.losses.Loss):
 			tf.math.reduce_sum(mel_mask)
 
 		# Pitch 
-		print(f"pitch target {pitch_target.shape} pitch pred {pitch_pred.shape}")
 		ldiff = pitch_target.shape[2] - pitch_pred.shape[2]
 		pitch_pad = [[0, 0], [0, 0], [0, ldiff]]
 		pitch_pred = tf.pad(pitch_pred, pitch_pad, constant_values=0.0)
@@ -97,9 +94,6 @@ class FastpitchLoss(keras.losses.Loss):
 			energy_loss = 0
 
 		# Attention loss
-		print(f"attn_logprob {attn_logprob}")
-		print(f"input_lens {input_lens}")
-		print(f"output_lens {output_lens}")
 		attn_loss = self.attn_ctc_loss(
 			attn_logprob, input_lens, output_lens
 		)

@@ -108,11 +108,9 @@ class ConvAttention(layers.Layer):
 		# etc, since we only need this during training.
 		# 
 		keys_enc = self.key_proj(keys) # B x n_attn_dims x T2
-		print(f"keys_enc: {keys_enc}, {keys_enc.shape}")
 
 		# Beware can only do this since query_dim = attn_dim - n_mel_channels
-		print(self.use_query_proj)
-		print(self.align_query_enc_type)
+
 		if self.use_query_proj:
 			if self.align_query_enc_type == "inv_conv":
 				# queries_enc, log_det_W = self.query_proj(queries)
@@ -120,15 +118,11 @@ class ConvAttention(layers.Layer):
 			elif self.align_query_enc_type == "3xconv":
 				queries_enc = self.query_proj(queries)
 				log_det_W = 0.0
-				print(f"queries_enc {queries_enc}, {queries_enc.shape}")
-				print(f"log_det_W {log_det_W}")
 			else:
 				# queries_enc, log_det_W = self.query_proj(queries) # This still uses inv1x1convlu if I'm not mistaken
 				raise ValueError("Invertible1x1ConvLUS is not currently implemented or supported at this time.")
 		else:
 			queries_enc, log_det_W = queries, 0.0
-			print(f"queries_enc {queries_enc}, {queries_enc.shape}")
-			print(f"log_det_W {log_det_W}")
 
 		# Different ways of computing attention, one is isotopic
 		# gaussian (per phoneme) Simplistic Gaussian Isotopic
@@ -140,23 +134,14 @@ class ConvAttention(layers.Layer):
 		# attn = (queries_enc[:, None, :, :] - keys_enc[None, :, :]) ** 2 # Invalid
 		# attn = (queries_enc[:, None, :, :] - keys_enc[:, None, :]) ** 2 # Invalid
 		# attn = (queries_enc[:, :, None, :] - keys_enc[None, :, :]) ** 2
-		print(f"attn {attn}, {attn.shape}")
 		# Compute log likelihood from a gaussian
 		# attn = -0.0005 * tf.math.reduce_sum(attn, axis=1, keepdims=True) # Original
 		attn = -0.0005 * tf.math.reduce_sum(attn, axis=-1, keepdims=True) # Applies reduce_sum to dim with 80 features (ie n_mels)
-		print(f"attn {attn}, {attn.shape}")
 		if attn_prior is not None:
-			print(f"attn log softmax {tf.nn.log_softmax(attn, axis=2)}, {tf.nn.log_softmax(attn, axis=2).shape}")
-			print(f"attn_prior {attn_prior}, {attn_prior.shape}")
-			print(f"attn_prior slice {attn_prior[:, None].shape}")
-			print(f"log attn_prior slice {tf.math.log(attn_prior[:, None] + 1e-8).shape}")
-			print(tf.transpose(tf.nn.log_softmax(attn, axis=2), [0, 3, 1, 2]).shape)
-			print(tf.math.log(attn_prior[:, None] + 1e-8).shape)
 			# attn = tf.nn.log_softmax(attn) +\ # axis = -1, same as axis = 3
 			# 	tf.math.log(attn_prior[:, None] + 1e-8) # Original
 			attn = tf.transpose(tf.nn.log_softmax(attn, axis=2), [0, 3, 1, 2]) +\
 				tf.math.log(attn_prior[:, None] + 1e-8)
-			print(f"attn after sum {attn}, {attn.shape}")
 
 		attn_logprob = tf.identity(attn)
 
@@ -164,11 +149,8 @@ class ConvAttention(layers.Layer):
 			mask = tf.expand_dims(
 				tf.transpose(mask, perm=[0, 2, 1]), axis=2
 			)
-			print(f"mask {mask.shape}, dtype {mask.dtype}")
-			print(f"attn {attn.shape}")
 			attn = tf.where(mask, -float("inf"), attn)
 			# attn = tf.where(mask, attn, -float("inf"))
-			print(f"attn {attn}, shape {attn.shape}")
 
 		attn = tf.nn.softmax(attn, axis=3) # Softmax along T2
 		return attn, attn_logprob

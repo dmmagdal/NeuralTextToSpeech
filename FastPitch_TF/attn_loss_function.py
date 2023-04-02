@@ -35,8 +35,6 @@ class AttentionCTCLoss:
 		# key_len.
 		key_inds = tf.range(max_key_len + 1, dtype=tf.int64)
 		mask = key_inds[None, None, :] > key_lens[None, :, None]
-		print(f"mask {mask.shape}")
-		print(f"attn_logprob {attn_logprob.shape}")
 		attn_logprob = tf.where(mask, -float("inf"), attn_logprob)
 		attn_logprob = tf.nn.softmax(attn_logprob, axis=-1)
 

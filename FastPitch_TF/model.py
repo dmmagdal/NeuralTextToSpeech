@@ -26,7 +26,6 @@ def regulate_len(durations, enc_out, pace: float = 1.0,
 	reps = tf.cast(durations, dtype=tf.float32) / pace
 	reps = tf.cast(reps + 0.5, dtype=tf.int64)
 	dec_lens = tf.math.reduce_sum(reps, axis=1)
-	print(f"dtype {dtype}, reps {reps} shape {reps.shape}, dec_lens {dec_lens} shape {dec_lens.shape}")
 
 	max_len = tf.math.reduce_max(dec_lens)
 	pad = [[0, 0], [1, 0]]
@@ -34,65 +33,49 @@ def regulate_len(durations, enc_out, pace: float = 1.0,
 		tf.pad(reps, pad, constant_values=0.0), axis=1
 	)[:, None, :]
 	reps_cumsum = tf.cast(reps_cumsum, dtype=dtype)
-	print(f"max_len {max_len}, reps_cumsum {reps_cumsum} shape {reps_cumsum.shape}")
 
 	# range_ = tf.range(max_len)[None, :, None]
 	range_ = tf.range(max_len, dtype=tf.float32)[None, :, None]
-	print(f"range_ {range_} shape {range_.shape}")
 	mult = (
 		(reps_cumsum[:, :, :-1] <= range_) &\
 		(reps_cumsum[:, :, 1:] > range_) 
 	)
-	print(f"mult {mult} shape {mult.shape}")
 	mult = tf.cast(mult, dtype=dtype)
 	enc_rep = tf.linalg.matmul(mult, enc_out)
-	print(f"enc_rep {enc_rep} shape {enc_rep.shape}")
 
 	if mel_max_len is not None:
 		enc_rep = enc_rep[:, :mel_max_len]
-		print(f"enc_rep {enc_rep} shape {enc_rep.shape}")
 		dec_lens = tf.clip_by_value(
 			dec_lens, clip_value_min=tf.int64.min, 
 			clip_value_max=tf.cast(mel_max_len, dtype=tf.int64)
 		)
-		print(f"dec_lens {dec_lens} shape {dec_lens.shape}")
 	return enc_rep, dec_lens
 
 
 def average_pitch(pitch, durs):
-	print("calculating average pitch")
-	print(f"pitch shape {pitch.shape}")
-	print(f"durs shape {durs.shape}")
 	durs_cums_ends = tf.cast(
 		tf.math.cumsum(durs, axis=1), dtype=tf.int64
 	)
-	print(f"durs_cums_ends {durs_cums_ends}\n{durs_cums_ends.shape}")
 	# durs_cums_starts = tf.pad(durs_cums_ends[:, :-1], [[1, 0]])
 	durs_cums_starts = tf.pad(durs_cums_ends[:, :-1], [[0, 0], [1, 0]])
-	print(f"durs_cums_starts {durs_cums_starts}\n{durs_cums_starts.shape}")
 	pitch_nonzero_cums = tf.pad(
 		# tf.math.cumsum(pitch != 0, axis=2), [[1, 0]]
 		tf.math.cumsum(tf.cast(pitch != 0.0, dtype=tf.int64), axis=2), 
 		[[0, 0], [0, 0], [1, 0]]
 	)
-	print(f"pitch_nonzero_cums {pitch_nonzero_cums}\n{pitch_nonzero_cums.shape}")
 	# pitch_cums = tf.pad(tf.math.cumsum(pitch, axis=2), [[1, 0]])
 	pitch_cums = tf.pad(
 		tf.math.cumsum(pitch, axis=2), [[0, 0], [0, 0], [1, 0]]
 	)
-	print(f"pitch_cums {pitch_cums}\n{pitch_cums.shape}")
 
 	batch_size, length = durs_cums_ends.shape
 	n_formants = pitch.shape[1]
-	print(f"batch_size {batch_size}, length {length}, n_formants {n_formants}")
 	dcs = tf.broadcast_to(
 		durs_cums_starts[:, None, :], (batch_size, n_formants, length)
 	)
 	dce = tf.broadcast_to(
 		durs_cums_ends[:, None, :], (batch_size, n_formants, length)
 	)
-	print(f"dce {dce}\n{dce.shape}")
-	print(f"dcs {dcs}\n{dcs.shape}")
 
 	# pitch_sums = (torch.gather(pitch_cums, 2, dce)
 	# 	- torch.gather(pitch_cums, 2, dcs)).float()
@@ -108,13 +91,10 @@ def average_pitch(pitch, durs):
 			tf.gather(pitch_nonzero_cums, dcs, batch_dims=2),
 		dtype=tf.float32
 	)
-	print(f"pitch_sums {pitch_sums}\n{pitch_sums.shape}")
-	print(f"pitch_nelems {pitch_nelems}\n{pitch_nelems.shape}")
 
 	pitch_avg = tf.where(
 		pitch_nelems == 0.0, pitch_nelems, pitch_sums / pitch_nelems
 	)
-	print(f"pitch_avg {pitch_avg}\n{pitch_avg.shape}")
 	return pitch_avg
 
 
@@ -283,8 +263,6 @@ class FastPitch(keras.Model):
 
 		text_max_len = tf.shape(inputs)[1]
 		mel_max_len = tf.shape(mel_tgt)[1]
-		print(f"max text len: {text_max_len}, max mel len: {mel_max_len}")
-		print(self.speaker_emb) # Tested on speaker_emb = None (single speaker). Have yet to test on multi-speaker
 
 		# Calculate speaker embedding
 		if self.speaker_emb is None:
@@ -298,10 +276,6 @@ class FastPitch(keras.Model):
 
 		# Input FFT
 		enc_out, enc_mask = self.encoder(inputs, conditioning=spk_emb)
-		print(enc_out)
-		print(enc_out.shape)
-		print(enc_mask)
-		print(enc_mask.shape)
 
 		# Predict durations
 		# log_dur_pred = self.duration_predictor(enc_out, enc_mask).squeeze(-1)
@@ -309,94 +283,57 @@ class FastPitch(keras.Model):
 		log_dur_pred = tf.squeeze(
 			self.duration_predictor(enc_out, enc_mask), -1
 		)
-		print(f"log_dur_pred {log_dur_pred}")
-		print(log_dur_pred.shape)
 		dur_pred = tf.clip_by_value(
 			tf.math.exp(log_dur_pred) - 1, 0, max_duration
 		)
-		print(f"dur_pred {dur_pred}")
-		print(dur_pred.shape)
 
 		# Predict pitch
 		pitch_pred = tf.transpose(
 			self.pitch_predictor(enc_out, enc_mask), [0, 2, 1]
 		)
-		print(f"pitch_pred {pitch_pred}")
-		print(pitch_pred.shape)
 
 		# Alignment
 		text_emb = self.encoder.word_emb(inputs)
-		print(f"text_emb {text_emb}")
-		print(text_emb.shape)
 
 		# make sure to do the alignments before folding
 		attn_mask = mask_from_lens(input_lens, text_max_len)
-		print(attn_mask)
-		print(attn_mask.shape)
 		# attn_mask = attn_mask[..., None] == 0
 		attn_mask = tf.expand_dims(attn_mask, axis=-1) == tf.cast(0, dtype=tf.bool)
-		print(attn_mask)
-		print(attn_mask.shape)
 		# attn_mask should be 1 for unused timesteps in the text_enc_w_spkvec tensor
 
-		print(f"mel_tgt shape {mel_tgt.shape}")
-		print(f"text_emb shape {tf.transpose(text_emb, [0, 2, 1]).shape}")
-		print(f"mel_lens shape {mel_lens.shape}")
-		print(f"attn_mask shape {attn_mask.shape}")
-		print(f"input_lens shape {input_lens.shape}")
-		print(f"enc_out shape {enc_out.shape}")
-		print(f"attn_prior shape {attn_prior.shape}")
 		attn_soft, attn_logprob = self.attention(
 			# mel_tgt, text_emb.permute(0, 2, 1), mel_lens, attn_mask,
 			# mel_tgt, tf.transpose(text_emb, [0, 2, 1]), mel_lens, attn_mask,
 			mel_tgt, text_emb, mel_lens, attn_mask, # No transpose to allow for the correct axis to be operated on.
 			key_lens=input_lens, keys_encoded=enc_out, attn_prior=attn_prior)
-		print(f"attn_soft {attn_soft}")
-		print(attn_soft.shape)
-		print(f"attn_logprob {attn_logprob}")
-		print(attn_logprob.shape)
 
 		attn_hard = self.binarize_attention(attn_soft, input_lens, mel_lens)
-		print(f"attn_hard {attn_hard}\nshape {attn_hard.shape}")
 
 		# Viterbi --> durations
 		# attn_hard_dur = attn_hard.sum(2)[:, 0, :]
 		attn_hard_dur = tf.math.reduce_sum(attn_hard, axis=2)[:, 0, :]
 		# dur_tgt = attn_hard_dur
 		dur_tgt = tf.identity(attn_hard_dur)
-		# x_temp = tf.math.reduce_sum(dur_tgt, axis=1)
-		# print(x_temp)
-		# print(x_temp.shape)
-		# print(mel_lens.shape)
-		# print(tf.math.equal(tf.cast(x_temp, dtype=tf.int64), mel_lens))
-		# print(tf.math.reduce_all(tf.math.equal(tf.cast(x_temp, dtype=tf.int64), mel_lens)))
-		# assert torch.all(torch.eq(dur_tgt.sum(dim=1), mel_lens))
 		assert tf.math.reduce_all(tf.math.equal(tf.cast(tf.math.reduce_sum(dur_tgt, axis=1), dtype=tf.int64), mel_lens))
 
 		# Average pitch over characters
 		pitch_tgt = average_pitch(pitch_dense, dur_tgt)
-		print(f"pitch_tgt {pitch_tgt}, shape {pitch_tgt.shape}")
 
 		if use_gt_pitch and pitch_tgt is not None:
-			print("embed pitch_tgt")
 			# pitch_emb = self.pitch_emb(pitch_tgt)
 			pitch_emb = self.pitch_emb(tf.transpose(pitch_tgt, [0, 2, 1])) # Transpose because pitch_emb is a conv layer and pytorch operates on axis 1 (channel) for conv. TF conv operates on axis -1
 			pitch_emb = tf.transpose(pitch_emb, [0, 2, 1]) # Remember to un-transpose
 		else:
-			print("embed pitch_pred")
 			# pitch_emb = self.pitch_emb(pitch_pred)
 			pitch_emb = self.pitch_emb(tf.transpose(pitch_tgt, [0, 2, 1])) # Transpose because pitch_emb is a conv layer and pytorch operates on axis 1 (channel) for conv. TF conv operates on axis -1
 			pitch_emb = tf.transpose(pitch_emb, [0, 2, 1]) # Remember to un-transpose
-		print(f"pitch_emb {pitch_emb}, shape {pitch_emb.shape}")
 		# enc_out = enc_out + pitch_emb.transpose(1, 2)
 		enc_out = enc_out + tf.transpose(pitch_emb, [0, 2, 1])
 
 		# Predict energy
 		if self.energy_conditioning:
-			print(f"energy conditioning {self.energy_conditioning}")
 			# energy_pred = self.energy_predictor(enc_out, enc_mask).squeeze(-1)
 			energy_pred = tf.squeeze(self.energy_predictor(enc_out, enc_mask), -1)
-			print(f"energy_pred {energy_pred}, shape {energy_pred.shape}")
 
 			# Average energy over characters
 			# energy_tgt = average_pitch(energy_dense.unsqueeze(1), dur_tgt)
@@ -412,7 +349,6 @@ class FastPitch(keras.Model):
 			# enc_out = enc_out + energy_emb.transpose(1, 2)
 			enc_out = enc_out + tf.transpose(energy_emb, [0, 2, 1])
 		else:
-			print(f"energy conditioning {self.energy_conditioning}")
 			energy_pred = None
 			energy_tgt = None
 
@@ -422,10 +358,6 @@ class FastPitch(keras.Model):
 		# Output FFT
 		dec_out, dec_mask = self.decoder(len_regulated, dec_lens)
 		mel_out = self.proj(dec_out)
-		print(f"dec_out {dec_out} shape {dec_out.shape}")
-		print(f"dec_mask {dec_mask} shape {dec_mask.shape}")
-		print(f"mel_out {mel_out} shape {mel_out.shape}")
-		print(f"mel_tgt {mel_tgt} shape {mel_tgt.shape}")
 		return (mel_out, dec_mask, dur_pred, log_dur_pred, pitch_pred,
 				pitch_tgt, energy_pred, energy_tgt, attn_soft, attn_hard,
 				attn_hard_dur, attn_logprob)
@@ -452,15 +384,11 @@ class FastPitch(keras.Model):
 			pitch_padded, energy_padded, speaker_id, attn_prior_padded,
 			audiopath
 		)
-		tf.print(tf.shape(x[0]))
 
 		y = (mel_padded, input_lengths, output_lengths)
 
-		print(f"x: {x}\ny: {y}\nnum_frames: {len_x}")
-
 		with tf.GradientTape() as tape:
 			y_pred = self(x, training=True)
-			print(f"y_pred: {y_pred}")
 			loss, meta = self.loss(y_pred, y)
 
 		# Compute gradients
