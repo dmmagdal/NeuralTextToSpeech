@@ -67,19 +67,24 @@ class FastpitchLoss(keras.losses.Loss):
 			tf.math.reduce_sum(mel_mask)
 
 		# Pitch 
+		print(f"pitch target {pitch_target.shape} pitch pred {pitch_pred.shape}")
 		ldiff = pitch_target.shape[2] - pitch_pred.shape[2]
-		pitch_pad = [[0, 0], [0, 0], [0, 1]]
+		pitch_pad = [[0, 0], [0, 0], [0, ldiff]]
 		pitch_pred = tf.pad(pitch_pred, pitch_pad, constant_values=0.0)
 		pitch_loss = keras.losses.MeanSquaredError()(
 			pitch_target, pitch_pred
 		)
 		pitch_loss = tf.math.reduce_sum(
-			pitch_loss * tf.expand_dims(dur_mask, axis=1)
-		) / tf.math.reduce_sum(dur_mask)
+			# pitch_loss * tf.expand_dims(dur_mask, axis=1)
+			pitch_loss * tf.expand_dims(
+				tf.cast(dur_mask, dtype=tf.float32), axis=1
+			)
+		) / tf.math.reduce_sum(tf.cast(dur_mask, dtype=tf.float32))
+		# ) / tf.math.reduce_sum(dur_mask)
 
 		# Energy loss 
 		if energy_pred is not None:
-			energy_pad = [[0, 0], [0, 1]]
+			energy_pad = [[0, 0], [0, ldiff]]
 			energy_pred = tf.pad(
 				energy_pred, energy_pad, constant_values=0.0
 			)
@@ -92,6 +97,9 @@ class FastpitchLoss(keras.losses.Loss):
 			energy_loss = 0
 
 		# Attention loss
+		print(f"attn_logprob {attn_logprob}")
+		print(f"input_lens {input_lens}")
+		print(f"output_lens {output_lens}")
 		attn_loss = self.attn_ctc_loss(
 			attn_logprob, input_lens, output_lens
 		)
