@@ -5,8 +5,9 @@ import tensorflow as tf
 from tensorflow import keras
 
 
-class AttentionCTCLoss:
+class AttentionCTCLoss(keras.losses.Loss):
 	def __init__(self, blank_logprob=-1):
+		super(AttentionCTCLoss, self).__init__()
 		# self.log_softmax = tf.nn.log_softmax()
 		self.blank_logprob = blank_logprob
 		# self.ctc_loss = tf.nn.ctc_loss()
@@ -43,9 +44,9 @@ class AttentionCTCLoss:
 		return cost
 
 
-class AttentionBinarizationLoss:
+class AttentionBinarizationLoss(keras.losses.Loss):
 	def __init__(self):
-		pass
+		super(AttentionBinarizationLoss, self).__init__()
 
 
 	def call(self, hard_attention, soft_attention, eps=1e-12):

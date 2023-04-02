@@ -8,10 +8,11 @@ from common.utils import mask_from_lens
 from attn_loss_function import AttentionCTCLoss
 
 
-class FastpitchLoss:
+class FastpitchLoss(keras.losses.Loss):
 	def __init__(self, dur_predictor_loss_scale=1.0,
 			pitch_predictor_loss_scale=1.0, attn_loss_scale=1.0,
 			energy_predictor_loss_scale=1.0):
+		super(FastpitchLoss, self).__init__()
 		self.dur_predictor_loss_scale = dur_predictor_loss_scale
 		self.pitch_predictor_loss_scale = pitch_predictor_loss_scale
 		self.energy_predictor_loss_scale = energy_predictor_loss_scale
@@ -28,12 +29,14 @@ class FastpitchLoss:
 		) = model_out
 
 		(mel_target, input_lens, output_lens) = targets
+		print(f"mel_target {mel_target.shape}")
 
 		dur_target = attn_dur
 		dur_lens = input_lens
 
 		# (batch_size, Hz, timesteps) -> (batch_size, timesteps, Hz)
-		mel_target = tf.transpose([1, 2])
+		# mel_target = tf.transpose([1, 2])
+		# mel_target = tf.transpose(mel_target, [0, 2, 1])
 
 		# Duration loss
 		dur_mask = mask_from_lens(
@@ -44,12 +47,16 @@ class FastpitchLoss:
 		)
 		loss_fn = keras.losses.MeanSquaredError()
 		dur_pred_loss = loss_fn(log_dur_pred, log_dur_target)
-		dur_pred_loss = tf.math.reduce_sum(dur_pred_loss * dur_mask) /\
-			tf.math.reduce_sum(dur_mask)
+		# dur_pred_loss = tf.math.reduce_sum(dur_pred_loss * dur_mask) /\
+		dur_pred_loss = tf.math.reduce_sum(
+			dur_pred_loss * tf.cast(dur_mask, dtype=tf.float32)
+		) / tf.math.reduce_sum(tf.cast(dur_mask, dtype=tf.float32))
+		# ) / tf.math.reduce_sum(dur_mask)
 
 		# Mel loss
+		print(f"mel target {mel_target.shape} mel_out {mel_out.shape}")
 		ldiff = mel_target.shape[1] - mel_out.shape[1]
-		mel_pad = [[0, 0], [0, 1], [0, 0]]
+		mel_pad = [[0, 0], [0, ldiff], [0, 0]]
 		mel_out = tf.pad(mel_out, mel_pad, constant_values=0.0)
 		mel_mask = tf.cast(
 			tf.math.not_equal(mel_out, 0), dtype=tf.float32

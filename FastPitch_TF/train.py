@@ -300,7 +300,8 @@ def main():
 	print(json.dumps(model_config, indent=4))
 	model = FastPitch(**model_config)
 	model.compile(
-		optimizer=optimizer, loss=[loss, attention_kl_loss],
+		# optimizer=optimizer, loss=[loss, attention_kl_loss],
+		optimizer=optimizer, loss=loss,
 		run_eagerly=True
 	)
 	# model.build()
