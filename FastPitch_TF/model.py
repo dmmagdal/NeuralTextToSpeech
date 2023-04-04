@@ -369,12 +369,16 @@ class FastPitch(keras.Model):
 		pass
 
 
-	def train_step(self, batch):
+	def train_step(self, batch, batch_size=None):
 		(
 			text_padded, input_lengths, mel_padded, output_lengths,
 			len_x, pitch_padded, energy_padded, speaker_id, 
 			attn_prior_padded, audiopath
 		) = batch
+
+
+		print(f"batch_size {text_padded.shape[0]}")
+		print(tf.shape(text_padded))
 
 		# Compute len_x from batch (see collate_fn() from
 		# data_function.py for more of an explanation).
@@ -394,6 +398,7 @@ class FastPitch(keras.Model):
 		# Compute gradients
 		trainable_vars = self.trainable_variables
 		gradients = tape.gradient(loss, trainable_vars)
+		# gradients = tape.gradient(meta, trainable_vars)
 
 		# Update weights
 		self.optimizer.apply_gradients(zip(gradients, trainable_vars))

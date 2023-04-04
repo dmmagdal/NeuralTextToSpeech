@@ -20,6 +20,12 @@ from loss_function import FastpitchLoss
 from model import FastPitch
 from models import get_fastpitch_config, parse_model_args
 
+tf.debugging.experimental.enable_dump_debug_info(
+	"./tmp/tfdbg2_logdir",
+	tensor_debug_mode="FULL_HEALTH",
+	circular_buffer_size=-1
+)
+
 
 def parse_args(parser):
 	parser.add_argument('-o', '--output', type=str, required=True,
@@ -252,49 +258,95 @@ def main():
 		pitch_online_method=f0_method
 	)
 
+	train_dataset.get_max_lengths()
+	train_text_max = train_dataset.max_input_len
+	train_mel_max = train_dataset.max_target_len
 	train_data = tf.data.Dataset.from_generator(
 		train_dataset.generator,
 		args=(),
 		output_signature=(
-			tf.TensorSpec(shape=(None,), dtype=tf.int64),			# text_encoded
+			# tf.TensorSpec(shape=(None,), dtype=tf.int64),			# text_encoded
+			# tf.TensorSpec(shape=(), dtype=tf.int64),				# input_lengths
+			# tf.TensorSpec(
+			# 	shape=(None, n_mel_channels), dtype=tf.float32
+			# ),														# mel
+			# tf.TensorSpec(shape=(), dtype=tf.int64),				# output_lengths
+			# tf.TensorSpec(shape=(), dtype=tf.int64),				# text_length
+			# tf.TensorSpec(shape=(None, None), dtype=tf.float32),	# pitch
+			# tf.TensorSpec(shape=(None,), dtype=tf.float32),			# energy
+			# tf.TensorSpec(shape=(), dtype=tf.int64),				# speaker id
+			# tf.TensorSpec(shape=(None, None), dtype=tf.float32),	# attn prior
+			# tf.TensorSpec(shape=(), dtype=tf.string),				# audiopath
+			tf.TensorSpec(shape=(train_text_max,), dtype=tf.int64),	# text_encoded
 			tf.TensorSpec(shape=(), dtype=tf.int64),				# input_lengths
 			tf.TensorSpec(
-				shape=(None, n_mel_channels), dtype=tf.float32
+				shape=(train_mel_max, n_mel_channels), dtype=tf.float32
 			),														# mel
 			tf.TensorSpec(shape=(), dtype=tf.int64),				# output_lengths
 			tf.TensorSpec(shape=(), dtype=tf.int64),				# text_length
-			tf.TensorSpec(shape=(None, None), dtype=tf.float32),	# pitch
-			tf.TensorSpec(shape=(None,), dtype=tf.float32),			# energy
-			tf.TensorSpec(shape=(), dtype=tf.int64),				# speaker id
-			tf.TensorSpec(shape=(None, None), dtype=tf.float32),	# attn prior
-			tf.TensorSpec(shape=(), dtype=tf.string),				# audiopath
-		)
-	)
-	valid_data = tf.data.Dataset.from_generator(
-		valid_dataset.generator,
-		args=(),
-		output_signature=(
-			tf.TensorSpec(shape=(None,), dtype=tf.int64),			# text_encoded
-			tf.TensorSpec(shape=(), dtype=tf.int64),				# input_lengths
 			tf.TensorSpec(
-				shape=(None, n_mel_channels), dtype=tf.float32
-			),														# mel
-			tf.TensorSpec(shape=(), dtype=tf.int64),				# output_lengths
-			tf.TensorSpec(shape=(), dtype=tf.int64),				# text_length
-			tf.TensorSpec(shape=(None, None), dtype=tf.float32),	# pitch
-			tf.TensorSpec(shape=(None,), dtype=tf.float32),			# energy
+				shape=(1, train_mel_max + 4), dtype=tf.float32
+			),														# pitch
+			tf.TensorSpec(shape=(train_mel_max,), dtype=tf.float32),# energy
 			tf.TensorSpec(shape=(), dtype=tf.int64),				# speaker id
-			tf.TensorSpec(shape=(None, None), dtype=tf.float32),	# attn prior
+			tf.TensorSpec(
+				shape=(train_text_max, train_mel_max), dtype=tf.float32
+			),														# attn prior
 			tf.TensorSpec(shape=(), dtype=tf.string),				# audiopath
-		)
+			# tf.TensorShape((batch_size, train_text_max)),
+			# tf.TensorShape((batch_size,)),
+			# tf.TensorShape((batch_size, train_mel_max, n_mel_channels)),
+			# tf.TensorShape((batch_size,)),
+			# tf.TensorShape((batch_size,)),
+			# tf.TensorShape((batch_size, 1, train_mel_max)),
+			# tf.TensorShape((batch_size, train_mel_max)),
+			# tf.TensorShape((batch_size)),
+			# tf.TensorShape((batch_size, train_text_max, train_mel_max)),
+			# tf.TensorShape((batch_size,)),
+		),
+		# output_shapes=(
+		# 	(train)
+		# ),
+		# output_types=(
+		# 	tf.int64, tf.int64, tf.float32, tf.int64, tf.int64, 
+		# 	tf.float32, tf.float32, tf.int64, tf.float32, tf.string,
+		# )
 	)
+	# valid_data = tf.data.Dataset.from_generator(
+	# 	valid_dataset.generator,
+	# 	args=(),
+	# 	output_signature=(
+	# 		tf.TensorSpec(shape=(None,), dtype=tf.int64),			# text_encoded
+	# 		tf.TensorSpec(shape=(), dtype=tf.int64),				# input_lengths
+	# 		tf.TensorSpec(
+	# 			shape=(None, n_mel_channels), dtype=tf.float32
+	# 		),														# mel
+	# 		tf.TensorSpec(shape=(), dtype=tf.int64),				# output_lengths
+	# 		tf.TensorSpec(shape=(), dtype=tf.int64),				# text_length
+	# 		tf.TensorSpec(shape=(None, None), dtype=tf.float32),	# pitch
+	# 		tf.TensorSpec(shape=(None,), dtype=tf.float32),			# energy
+	# 		tf.TensorSpec(shape=(), dtype=tf.int64),				# speaker id
+	# 		tf.TensorSpec(shape=(None, None), dtype=tf.float32),	# attn prior
+	# 		tf.TensorSpec(shape=(), dtype=tf.string),				# audiopath
+	# 	),
+	# )
+	'''
+	with tf.device('/cpu:0'): # Use CPU because GPU OOMs here (but will not when using generator). This may cost some speed.
+		train_data_alt = tf.data.Dataset.from_tensor_slices(
+			train_dataset.tensor_slices()
+		)
+		valid_data_alt = tf.data.Dataset.from_tensor_slices(
+			valid_dataset.tensor_slices()
+		)
+	'''
 	# -----------------------------------------------------------------
 
 	# See to this link as to why I call tf.data.Dataset.batch() to see
 	# batch size in the model: 
 	# https://github.com/tensorflow/tensorflow/issues/43094#issuecomment-690919548
-	train_data = train_data.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+	train_data = train_data.batch(batch_size).prefetch(tf.data.AUTOTUNE) # Uses generator
 	# train_data = train_data.batch(2)
+	# train_data_alt = train_data_alt.batch(batch_size).prefetch(tf.data.AUTOTUNE) # Uses from_tensor_slices
 
 	model_config = get_fastpitch_config(args)
 	print(json.dumps(model_config, indent=4))
@@ -302,13 +354,15 @@ def main():
 	model.compile(
 		# optimizer=optimizer, loss=[loss, attention_kl_loss],
 		optimizer=optimizer, loss=loss,
-		run_eagerly=True
+		# run_eagerly=True # Used when debugging the architecture
 	)
+
 	# model.build()
 	# model.summary()
 	# exit()
 
-	model.fit(train_data, epochs=1, batch_size=4)
+	model.fit(train_data, epochs=1)#, batch_size=4) # Uses generator
+	# model.fit(train_data_alt, epochs=1, batch_size=4) # Uses from_tensor_slices
 
 	# Exit the program.
 	exit(0)

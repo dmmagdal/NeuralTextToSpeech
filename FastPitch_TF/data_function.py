@@ -241,6 +241,9 @@ class Data:
 		self.pitch_mean = to_tensor(pitch_mean)
 		self.pitch_std = to_tensor(pitch_std)
 
+		self.max_input_len = -1
+		self.max_target_len = -1
+
 
 	def __getitem__(self, index):
 		# Separate filename and text
@@ -416,7 +419,59 @@ class Data:
 		return pitch_mel
 
 
+	def get_max_lengths(self):
+		# Compute the maximum input (text) and target
+		# (mel-spectrogram) lengths.
+		print("Isolating max input and target lengths...")
+		for idx in tqdm(range(len(self.audiopaths_and_text))):
+			# Use this (re-uses the code at the beginning of
+			# __getitem__), instead of the __getitem__ function to
+			# reduce overhead from computing/loading all other
+			# unnecessary values. Only the text and mel spectrograms
+			# are needed to find the maximum input and output lengths.
+			# Current time is down to less than 10 minutes vs hours
+			# when using __getitem__.
+			if self.n_speakers > 1:
+				audiopath, *extra, text, speaker = self.audiopaths_and_text[idx]
+			else:
+				audiopath, *extra, text = self.audiopaths_and_text[idx]
+
+			mel = self.get_mel(audiopath)
+			text = self.get_text(text)
+			self.max_input_len = max(
+				tf.shape(text)[0], self.max_input_len
+			)
+			self.max_target_len = max(
+				tf.shape(mel)[0], self.max_target_len
+			)
+
+		print(f"Max input length {self.max_input_len}")
+		print(f"Max target length {self.max_target_len}")
+
+
+
 	def generator(self):
+		# Compute the maximum input (text) and target
+		# (mel-spectrogram) lengths if they haven't been calculated
+		# already.
+		if (self.max_input_len + self.max_target_len < 0):
+			self.get_max_lengths()
+
+		assert self.max_input_len != -1
+		assert self.max_target_len != -1
+
+		# Apply data collate function to each item in the dataset.
+		# print("Applying data collator function...")
+		# for idx in tqdm(range(len(self.audiopaths_and_text))):
+		for idx in range(len(self.audiopaths_and_text)):
+			yield self.collate_fn(self.__getitem__(idx))
+		# Alternative: Apply data collate function to each batch from
+		# within the train_step function of the model.
+		# for idx in range(len(self.audiopaths_and_text)):
+		# 	yield self.__getitem__(idx)
+
+
+	def tensor_slices(self):
 		self.max_input_len = 0
 		self.max_target_len = 0
 
@@ -450,8 +505,10 @@ class Data:
 
 		# Apply data collate function to each item in the dataset.
 		print("Applying data collator function...")
+		tensor_list = []
 		for idx in tqdm(range(len(self.audiopaths_and_text))):
-			yield self.collate_fn(self.__getitem__(idx))
+			tensor_list.append(self.collate_fn(self.__getitem__(idx)))
+		return tensor_list
 
 
 	# def collate_fn(self, text_encoded, mel, text_len, pitch, energy, 
