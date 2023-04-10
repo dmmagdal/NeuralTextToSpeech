@@ -116,6 +116,7 @@ class GradTTS(keras.Model):
 		# Sample latent representation from terminal distribution
 		# N(mu_y, I).
 		z = mu_y + tf.random.uniform(mu_y) / temperature
+		
 		# Generate sample by performing reverse dynamics.
 		decoder_outputs = self.decoder(
 			z, y_mask, mu_y, n_timesteps, stoc, spk
@@ -148,8 +149,19 @@ class GradTTS(keras.Model):
 			# y_pred = self(text_padded, input_lengths, 0)
 			# print(f"y_pred: {y_pred}")
 			# loss, meta = self.loss(y_pred, y)
-			exit()
-		return {}
+
+		# Compute gradients
+		trainable_vars = self.trainable_variables
+		gradients = tape.gradient(loss, trainable_vars)
+
+		# Update weights
+		self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+
+		# Update metrics (includes the metric that tracks the loss)
+		# self.compiled_metrics.update_state(y, y_pred)
+
+		# Return a dict mapping metric names to current value
+		return {m.name: m.result() for m in self.metrics}
 
 
 	def compute_loss(self, x, x_lengths, y, y_lengths, spk=None, 
@@ -340,8 +352,7 @@ class GradTTS(keras.Model):
 		# Compute loss of score-based decoder.
 		diff_loss, xt = self.decoder.compute_loss(y, y_mask, mu_y, spk)
 		print(f"diff_loss {diff_loss}, shape {diff_loss.shape}")
-		print(f"xt {xt}, shape {xt}")
-		exit()
+		print(f"xt {xt}, shape {xt.shape}")
 
 		# Compute loss between aligned encoder outputs and
 		# mel-spectrogram.
@@ -351,5 +362,6 @@ class GradTTS(keras.Model):
 		# prior_loss = prior_loss / (tf.math.reduce_sum(y_mask) * self.n_feats)
 		prior_loss = prior_loss /\
 			(tf.math.reduce_sum(y_mask) * self.n_mel_channels)
+		print(f"prior_loss {prior_loss}, shape {prior_loss.shape}")
 
 		return dur_loss, prior_loss, diff_loss

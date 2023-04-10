@@ -55,7 +55,8 @@ def main():
 			tf.TensorSpec(shape=(), dtype=tf.int64),				# speaker id
 		)
 	)
-	train_dataset = train_dataset.batch(16, drop_remainder=True)
+	# train_dataset = train_dataset.batch(16, drop_remainder=True)
+	train_dataset = train_dataset.batch(8, drop_remainder=True)
 	valid_data = Data(
 		dataset_path, # dataset_path
 		params.valid_filelist_path, # filelist_path
@@ -84,6 +85,8 @@ def main():
 			tf.TensorSpec(shape=(), dtype=tf.int64),				# speaker id
 		)
 	)
+	# valid_dataset = train_dataset.batch(16, drop_remainder=True)
+	valid_dataset = train_dataset.batch(8, drop_remainder=True)
 	test_data = Data(
 		dataset_path, # dataset_path
 		params.test_filelist_path, # filelist_path
@@ -138,7 +141,9 @@ def main():
 		run_eagerly=True
 	)
 
-	model.fit(train_dataset, epochs=1, batch_size=16)
+	# model.fit(train_dataset, epochs=1, batch_size=16)
+	model.fit(train_dataset, epochs=1)
+	# model.summary()
 
 
 	# Exit the program.

@@ -5,7 +5,9 @@ import math
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers, Sequential
-from .group_normalizations import GroupNormalization
+# from .group_normalizations import GroupNormalization
+import tensorflow_addons as tfa
+from tensorflow_addons.layers import GroupNormalization
 from .identity import Identity
 from einops import rearrange
 
@@ -13,11 +15,12 @@ from einops import rearrange
 class Mish(layers.Layer):
 	def __init__(self):
 		super(Mish, self).__init__()
-		self.softplus = layers.Activation('softplus')
+		# self.softplus = layers.Activation('softplus')
 
 
 	def call(self, x):
-		return x * tf.math.tanh(self.softplus(x))
+		# return x * tf.math.tanh(self.softplus(x))
+		return x * tf.math.tanh(tf.math.softplus(x))
 
 
 class UpSample(layers.Layer):
@@ -62,7 +65,10 @@ class Block(layers.Layer):
 
 
 	def call(self, x, mask):
-		output = self.block(x * mask)
+		print(f"shape {(x * mask).shape}")
+		output = self.block(x * mask) # Original
+		print(f"output shape {output.shape}")
+		print(f"output shape {output.shape}")
 		return output * mask
 
 
@@ -84,11 +90,20 @@ class ResnetBlock(layers.Layer):
 
 	def call(self, x, mask, time_emb):
 		h = self.block1(x, mask)
+		print(f"h block1 {h}, shape {h.shape}")
+		temp = tf.expand_dims(tf.expand_dims(self.mlp(time_emb), 1), 1)
+		print(f"time_emb mlp {temp}, shape {temp.shape}")
 		h += tf.expand_dims(
-			tf.expand_dims(self.mlp(time_emb), -1),	-1
+			# tf.expand_dims(self.mlp(time_emb), -1), -1 # Original
+			# tf.expand_dims(self.mlp(time_emb), -1), 1 # failed
+			# tf.expand_dims(self.mlp(time_emb), 1), -1 # failed
+			tf.expand_dims(self.mlp(time_emb), 1), 1
 		)
+		print(f"h mlp {h}, shape {h.shape}")
 		h = self.block2(h, mask)
+		print(f"h block2 {h}, shape {h.shape}")
 		output = h + self.res_conv(x * mask)
+		print(f"output h + res_conv {output}, shape {output.shape}")
 		return output
 
 
@@ -100,21 +115,58 @@ class LinearAttention(layers.Layer):
 		self.to_qkv = layers.Conv2D(hidden_dim * 3, 1, use_bias=False)
 		self.to_out = layers.Conv2D(dim, 1)
 
+		self.softmax = layers.Softmax(axis=-2)
+
 
 	def call(self, x):
-		b, c, h, w = x.shape
+		print("In attention module")
+		# b, c, h, w = x.shape # Original
+		b, h, w, c = x.shape
+		print(f"b {b}, h {h}, w {w}, c {c}")
 		qkv = self.to_qkv(x)
-		q, k, v = rearrange(
-			qkv, 'b (qkv heads c) h w -> qkv b heads c (h w)', 
-			heads=self.heads, qkv=3
-		)
-		k = tf.nn.softmax(k, axis=-1)
-		context = tf.einsum('bhdn,bhen->bhde', k, v)
-		out = tf.einsum('bhde,bhdn->bhen', context, q)
-		out = rearrange(
-			out, 'b heads c (h w) -> b (heads c) h w', 
-			heads=self.heads, h=h, w=w
-		)
+		print(f"qkv {qkv}, shape {qkv.shape}")
+		# q, k, v = rearrange(
+		# 	qkv, 'b (qkv heads c) h w -> qkv b heads c (h w)', 
+		# 	heads=self.heads, qkv=3
+		# )
+		# k = tf.nn.softmax(k, axis=-1)
+		# context = tf.einsum('bhdn,bhen->bhde', k, v)
+		# out = tf.einsum('bhde,bhdn->bhen', context, q)
+		# out = rearrange(
+		# 	out, 'b heads c (h w) -> b (heads c) h w', 
+		# 	heads=self.heads, h=h, w=w
+		# )
+
+		# Alternative curtesy of ChatGPT
+		q, k, v = tf.split(qkv, num_or_size_splits=3, axis=-1)
+		print(f"q {q}, shape {q.shape}")
+		print(f"k {k}, shape {k.shape}")
+		print(f"v {v}, shape {v.shape}")
+		# q = tf.reshape(q, [b, h * w, self.heads, -1]) # Original from chatGPT
+		# k = tf.reshape(k, [b, h * w, self.heads, -1]) # Original from chatGPT
+		# v = tf.reshape(v, [b, h * w, self.heads, -1]) # Original from chatGPT
+		q = tf.reshape(q, [b, -1, h * w, self.heads])
+		k = tf.reshape(k, [b, -1, h * w, self.heads])
+		v = tf.reshape(v, [b, -1, h * w, self.heads])
+		print(f"q {q}, shape {q.shape}")
+		print(f"k {k}, shape {k.shape}")
+		print(f"v {v}, shape {v.shape}")
+		# k = tfa.activations.sparsemax(k, axis=-1) # Original from chatGPT
+		# k = tfa.activations.sparsemax(k, axis=-2) # Changed axis to be the same proper dim as in Pytorch
+		# k = tf.nn.softmax(k, axis=-2) # Use softmax (with updated axis)
+		k = self.softmax(k) # Use tf.keras.layer softmax (with updated axis)
+		print(f"k softmax {k}, shape {k.shape}")
+		# context = tf.einsum('bhdc,bhpc->bhdp', v, k) # Original from chatGPT. Seems to OOM on GPU at this step (even when batch size is 4). Creates a tensor with shape (B, 32, 13760, 13760) <- Probably what caused the OOM.
+		context = tf.einsum('bdwc,bpwc->bdpc', v, k) # Creates a tensor with shape (B, 32, 32, 4)
+		print(f"context {context}, shape {context.shape}")
+		# out = tf.einsum('bhdp,bhdc->bhpc', context, q) # Original from chatGPT. Seems to OOM on GPU at this step (even when batch size is 4). Creates a tensor with shape (B, 32, 13760, 13760) <- Probably what caused the OOM.
+		out = tf.einsum('bhec,bhnc->benc', context, q) # Creates a tensor with shape (B, 32, 13760, 4)
+		print(f"out {out}, shape {out.shape}")
+		# out = tf.reshape(out, [b, h, w, self.heads * -1]) Original from chatGPT. Invalid
+		out = tf.reshape(out, [b, h, w, -1])
+		print(f"out rearranged {out}, shape {out.shape}")
+		temp = self.to_out(out)
+		print(f"out to_out {temp}, shape {temp.shape}")
 		return self.to_out(out)
 
 
@@ -196,7 +248,7 @@ class GradLogPEstimator2D(layers.Layer):
 			self.ups.append([
 				ResnetBlock(dim_out * 2, dim_in, time_emb_dim=dim),
 				ResnetBlock(dim_in, dim_in, time_emb_dim=dim),
-				Residual(ReZero(LinearAttention(dim))),
+				Residual(ReZero(LinearAttention(dim_in))),
 				UpSample(dim_in)
 			])
 
@@ -205,18 +257,34 @@ class GradLogPEstimator2D(layers.Layer):
 	
 
 	def call(self, x, mask, mu, t, spk=None):
+		print(f"x {x}\nshape {x.shape}")
+		print(f"mask {mask}\nshape {mask.shape}")
+		print(f"mu {mu}\nshape {mu.shape}")
+		print(f"t {t}\nshape {t.shape}")
+		print(f"spk {spk}")
 		if not isinstance(spk, type(None)):
 			s = self.spk_mlp(spk)
 
 		t = self.time_pos_emb(t, scale=self.pe_scale)
+		print(f"t after time_pos_emb: {t}, shape {t.shape}")
 		t = self.mlp(t)
+		print(f"t after mlp: {t}, shape {t.shape}")
 
 		if self.n_spkrs < 2:
 			x = tf.stack([mu, x], axis=1)
+			print("less than 2 n_spkr (1 n_spkr)")
+			print(f"x after stack {x}, shape {x.shape}")
 		else:
 			s = tf.repeat(tf.expand_dims(s, -1), [1, 1, x.shape([-1])])
 			x = tf.stack([mu, x, s], axis=1)
+			print("more than 1 n_spkr")
+			print(f"x after stack {x}, shape {x.shape}")
 		mask = tf.expand_dims(mask, 1)
+		print(f"mask unsqueezed {mask}, shape {mask.shape}")
+
+		# Transpose so that correct dims are operated on.
+		mask = tf.transpose(mask, [0, 2, 3, 1])
+		x = tf.transpose(x, [0, 2, 3, 1])
 
 		hiddens = []
 		masks = [mask]
@@ -227,7 +295,10 @@ class GradLogPEstimator2D(layers.Layer):
 			x = attn(x)
 			hiddens.append(x)
 			x = downsample(x * mask_down)
-			masks.append(mask_down[:, :, :, ::2])
+			# print(f"mask_down {mask_down.shape}")
+			# print(f"mask_down {mask_down[:, :, ::2, :].shape}")
+			# masks.append(mask_down[:, :, :, ::2]) # Original
+			masks.append(mask_down[:, :, ::2, :])
 
 		masks = masks[:-1]
 		mask_mid = masks[-1]
@@ -237,16 +308,25 @@ class GradLogPEstimator2D(layers.Layer):
 
 		for resnet1, resnet2, attn, upsample in self.ups:
 			mask_up = masks.pop()
-			x = tf.concat((x, hiddens.pop()), axis=1)
+			# print(f"x {x.shape}")
+			# x = tf.concat((x, hiddens.pop()), axis=1) # Original
+			x = tf.concat((x, hiddens.pop()), axis=-1)
+			# print(f"x concat {x.shape}")
 			x = resnet1(x, mask_up, t)
 			x = resnet2(x, mask_up, t)
 			x = attn(x)
 			x = upsample(x * mask_up)
 
 		x = self.final_block(x, mask)
+		print(f"x final block {x}, shape {x.shape}")
 		output = self.final_conv(x * mask)
+		print(f"output final conv {output}, shape {output.shape}")
+		print(f"mask shape {mask.shape}")
+		temp = tf.squeeze(output * mask, -1)
+		print(f"output * mask squeezed shape {temp.shape}")
 
-		return tf.squeeze(output * mask, 1)
+		# return tf.squeeze(output * mask, 1) # Original
+		return  tf.squeeze(output * mask, -1)
 
 
 def get_noise(t, beta_init, beta_term, cumulative=False):
