@@ -27,17 +27,25 @@ def convert_to_shape(pad_shape):
 
 def generate_path(duration, mask):
 	b, t_x, t_y = mask.shape
+	print(f"duration: {duration}, shape {duration.shape}")
 	cum_duration = tf.math.cumsum(duration, 1)
+	print(f"cum_duration {cum_duration}, shape {cum_duration.shape}")
+	print(f"mask {mask}, shape {mask.shape}")
 	path = tf.zeros((b, t_x, t_y), dtype=mask.dtype)
+	print(f"path {path.shape}")
 
 	cum_duration_flat = tf.reshape(cum_duration, [b * t_x])
+	print(f"cum_duration_flat {cum_duration_flat}, shape {cum_duration_flat.shape}")
 	path = tf.cast(
 		sequence_mask(cum_duration_flat, t_y), dtype=mask.dtype
 	)
+	print(f"path (sequence_mask) {path}, shape {path.shape}")
 	path = tf.reshape(path, [b, t_x, t_y])
+	print(f"path (reshaped) {path}, shape {path.shape}")
 	path = path - tf.pad(
-		path, convert_pad_shape([[0, 0], [1, 0], [0, 0]])[:, :-1]
-	)
+		# path, convert_pad_shape([[0, 0], [1, 0], [0, 0]])[:, :-1] # Original
+		path, [[0, 0], [1, 0], [0, 0]]
+	)[:, :-1]
 	path = path * mask
 	return path
 

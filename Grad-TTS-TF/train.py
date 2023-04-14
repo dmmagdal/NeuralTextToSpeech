@@ -141,10 +141,18 @@ def main():
 		run_eagerly=True
 	)
 
-	# model.fit(train_dataset, epochs=1, batch_size=16)
-	model.fit(train_dataset, epochs=1)
+	# Build model to get the summary (not a hard requirement but nice
+	# to have).
+	# batch = list(train_dataset.batch(1).take(1).as_numpy_iterator())
+	# print(batch[0])
+	# print(batch[0][0])
+	# inputs = {"x": tf.squeeze(batch[0][0], 0), "x_lengths": tf.squeeze(batch[0][1], 0), "n_timesteps": 1}
+	# model.call(inputs)
+	# model.build()
 	# model.summary()
 
+	# model.fit(train_dataset, epochs=1, batch_size=16)
+	model.fit(train_dataset, epochs=1)
 
 	# Exit the program.
 	exit(0)

@@ -49,10 +49,29 @@ class GradTTS(keras.Model):
 		)
 
 
+	'''
+	# Override the build() function to get the model summary.
+	def build(self, input_shape=None):
+		x = layers.Input(shape=(None,), dtype=tf.int64)
+		x_lengths = layers.Input(shape=(), dtype=tf.int64)
+		n_timesteps = 0
+		self({"x": x, "x_lengths": x_lengths, "n_timesteps": n_timesteps})
+	'''
+
+
+	def call(self, inputs, training=None): # To be compatible with regular tf.keras.Model call()
+		assert isinstance(inputs, dict)
+		x = inputs["x"]
+		x_lengths = inputs["x_lengths"]
+		n_timesteps = inputs["n_timesteps"]
+		temperature = inputs["temperature"] if "temperature" in inputs.keys() else 1.0
+		stoc = inputs["stoc"] if "stoc" in inputs.keys() else False
+		spk = inputs["spk"] if "spk" in inputs.keys() else None
+		length_scale = inputs["length_scale"] if "length_scale" in inputs.keys() else 1.0
 	# def call(self, x, x_lengths, n_timesteps, temperature=1.0, 
-	# 		stoc=False, spk=None, length_scale=1.0):
-	def call(self, inputs, temperature=1.0, stoc=False, spk=None, 
-			length_scale=1.0):
+	# 		stoc=False, spk=None, length_scale=1.0): # Original
+	# def call(self, inputs, temperature=1.0, stoc=False, spk=None, 
+			# length_scale=1.0): # Attempt at using call for inference & train_step
 		# Generates mel-spectrogram from text. Returns:
 		#	1. encoder outputs
 		#	2. decoder outputs
@@ -70,7 +89,10 @@ class GradTTS(keras.Model):
 		# @param: length_scale (float, optional), controls speech pace.
 		#	Increase value to slow down generated speech and vice 
 		#	versa.
-		(x, x_lengths, n_timesteps) = inputs
+		# (x, x_lengths, n_timesteps) = inputs
+
+		print(f"x {x}, shape {x.shape}")
+		print(f"x_lengths {x_lengths}, shape {x_lengths.shape}")
 
 		if self.n_spkr > 1:
 			# Get speaker embedding.
@@ -79,45 +101,72 @@ class GradTTS(keras.Model):
 		# Get encoder outputs 'mu_x' and log-scalted token duration
 		# 'logw'.
 		mu_x, logw, x_mask = self.encoder(x, x_lengths, spk)
+		print(f"mu_x {mu_x}, shape {mu_x.shape}")
+		print(f"logw {logw}, shape {logw.shape}")
+		print(f"x_mask {x_mask}, shape {x_mask.shape}")
 
 		w = tf.math.exp(logw) * x_mask
 		w_ceil = tf.math.ceil(w) * length_scale
 		y_lengths = tf.cast(
-			tf.clip_by_value(tf.math.reduce_sum(w_ceil, [1, 2]), 1), 
+			# tf.clip_by_value(tf.math.reduce_sum(w_ceil, [1, 2]), tf.float32.min, 1), # Invalid
+			tf.clip_by_value(tf.math.reduce_sum(w_ceil, [1, 2]), 1, tf.float32.max), 
 			dtype=tf.int64
 		)
 		y_max_length = int(tf.math.reduce_max(y_lengths))
 		y_max_length_ = fix_len_compatibility(y_max_length)
+		print(f"w {w}, shape {w.shape}")
+		print(f"w_ceil {w_ceil}, shape {w_ceil.shape}")
+		print(f"y_lengths {y_lengths}, shape {y_lengths.shape}")
+		print(f"y_max_length {y_max_length}")
+		print(f"y_max_length_ {y_max_length_}")
 
 		# Using obtained 'w' construct alignment map 'attn'.
 		y_mask = tf.cast(
 			tf.expand_dims(
-				sequence_mask(y_lengths, y_max_length_), 1
+				sequence_mask(y_lengths, y_max_length_), 
+				# axis=1 # Original
+				axis=-1
 			),
 			dtype=x_mask.dtype
 		)
-		attn_mask = tf.expand_dims(x_mask, -1) *\
-			tf.expand_dims(y_mask, 2)
+		# attn_mask = tf.expand_dims(x_mask, -1) *\
+		# 	tf.expand_dims(y_mask, 2) # Original
+		# attn_mask = tf.expand_dims(x_mask, 1) * tf.expand_dims(y_mask, -1) # Wrong shape (but valid)
+		# attn_mask = tf.expand_dims(x_mask, 1) * tf.expand_dims(y_mask, 2) # Wrong shape (but valid). Same as preceeding line
+		# attn_mask = tf.expand_dims(x_mask, 1) * tf.expand_dims(y_mask, 1) # Invalid
+		attn_mask = tf.expand_dims(x_mask, -1) * tf.expand_dims(y_mask, 1) # Looks right
 		attn = tf.expand_dims(
 			generate_path(
-				tf.squeeze(w_ceil, 1), tf.squeeze(attn_mask, 1)
+				# tf.squeeze(w_ceil, 1), tf.squeeze(attn_mask, 1) # Original
+				tf.squeeze(w_ceil, -1), tf.squeeze(attn_mask, -1)
 			),
-			1
+			axis=1
 		)
+		print(f"y_mask {y_mask}, shape {y_mask.shape}")
+		print(f"attn_mask {attn_mask}, shape {attn_mask.shape}")
+		print(f"w_ceil squeeze {tf.squeeze(w_ceil, -1).shape}, attn_mask squeeze {tf.squeeze(attn_mask, -1).shape}")
+		print(f"attn {attn}, shape {attn.shape}")
+		print(f"mu_x {mu_x.shape}")
 
 		# Align encoded text and get mu_y.
 		mu_y = tf.linalg.matmul(
 			tf.transpose(tf.squeeze(attn, 1), [0, 2, 1]),
-			tf.transpose(mu_x, [0, 2, 1])
+			# tf.transpose(mu_x, [0, 2, 1]) # Original
+			mu_x # No transpose since mu_x already is in the desired shape.
 		)
+		print(f"mu_y {mu_y}, shape {mu_y.shape}")
 		mu_y = tf.transpose(mu_y, [0, 2, 1])
+		print(f"mu_y {mu_y}, shape {mu_y.shape}")
 		encoder_outputs = mu_y[:, :, :y_max_length]
+		print(f"encoder_outputs {encoder_outputs}, shape {encoder_outputs.shape}")
 
 		# Sample latent representation from terminal distribution
 		# N(mu_y, I).
-		z = mu_y + tf.random.uniform(mu_y) / temperature
-		
+		z = mu_y + tf.random.uniform(mu_y.shape) / temperature
+		print(f"z {z}, shape {z.shape}")
+
 		# Generate sample by performing reverse dynamics.
+		y_mask = tf.transpose(y_mask, [0, 2, 1])
 		decoder_outputs = self.decoder(
 			z, y_mask, mu_y, n_timesteps, stoc, spk
 		)
@@ -146,9 +195,8 @@ class GradTTS(keras.Model):
 				text_padded, input_lengths, mel_padded, output_lengths,
 				out_size=self.out_size
 			)
-			# y_pred = self(text_padded, input_lengths, 0)
+			# y_pred = self((text_padded, input_lengths, 10)) # 
 			# print(f"y_pred: {y_pred}")
-			# loss, meta = self.loss(y_pred, y)
 
 		# Compute gradients
 		trainable_vars = self.trainable_variables
@@ -159,6 +207,7 @@ class GradTTS(keras.Model):
 
 		# Update metrics (includes the metric that tracks the loss)
 		# self.compiled_metrics.update_state(y, y_pred)
+		# self.compiled_metrics.update_state(mel_padded, y_pred)
 
 		# Return a dict mapping metric names to current value
 		return {m.name: m.result() for m in self.metrics}

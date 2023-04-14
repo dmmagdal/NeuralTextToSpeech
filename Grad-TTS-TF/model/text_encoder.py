@@ -68,7 +68,8 @@ class ConvReluNorm(layers.Layer):
 		self.kernel_size = kernel_size
 		self.n_layers = n_layers
 		self.p_dropout = p_dropout
-		padding = "causal" if kernel_size // 2 else "same"
+		padding = "causal" if kernel_size // 2 else "same" # Not sure which to use
+		# padding = "same" if kernel_size // 2 else "valid"
 
 		self.conv_layers = []
 		self.norm_layers = []
@@ -120,7 +121,8 @@ class DurationPredictor(layers.Layer):
 		super(DurationPredictor, self).__init__()
 		self.filter_channels = filter_channels
 		self.p_dropout = p_dropout
-		padding = "causal" if kernel_size // 2 else "same"
+		padding = "causal" if kernel_size // 2 else "same" # Not sure which one to use.
+		# padding = "same" if kernel_size // 2 else "valid"
 
 		self.drop = layers.Dropout(p_dropout)
 		self.conv1 = layers.Conv1D(
@@ -164,9 +166,18 @@ class MultiHeadAttention(layers.Layer):
 		self.attn = None
 
 		self.k_channels = channels // n_heads
-		self.conv_q = layers.Conv1D(channels, 1)
-		self.conv_k = layers.Conv1D(channels, 1)
-		self.conv_v = layers.Conv1D(channels, 1)
+		self.conv_q = layers.Conv1D(
+			channels, 1, 
+			kernel_initializer=keras.initializers.GlorotUniform()
+		)
+		self.conv_k = layers.Conv1D(
+			channels, 1, 
+			kernel_initializer=keras.initializers.GlorotUniform()
+		)
+		self.conv_v = layers.Conv1D(
+			channels, 1, 
+			kernel_initializer=keras.initializers.GlorotUniform()
+		)
 		if window_size is not None:
 			n_heads_rel = 1 if heads_share else n_heads
 			rel_stddev = self.k_channels ** -0.5
@@ -473,7 +484,12 @@ class TextEncoder(keras.Model):
 		self.spk_emb_dim = spk_emb_dim
 		self.n_spks = n_spks
 
-		self.emb = layers.Embedding(n_vocab, n_channels)
+		self.emb = layers.Embedding(
+			n_vocab, n_channels, 
+			embeddings_initializer=keras.initializers.RandomNormal(
+				mean=0.0, stddev=n_channels**-0.5
+			)
+		)
 
 		self.prenet = ConvReluNorm(
 			n_channels, n_channels, kernel_size=5, n_layers=3, 
