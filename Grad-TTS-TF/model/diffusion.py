@@ -65,10 +65,7 @@ class Block(layers.Layer):
 
 
 	def call(self, x, mask):
-		print(f"shape {(x * mask).shape}")
 		output = self.block(x * mask) # Original
-		print(f"output shape {output.shape}")
-		print(f"output shape {output.shape}")
 		return output * mask
 
 
@@ -90,20 +87,15 @@ class ResnetBlock(layers.Layer):
 
 	def call(self, x, mask, time_emb):
 		h = self.block1(x, mask)
-		print(f"h block1 {h}, shape {h.shape}")
 		temp = tf.expand_dims(tf.expand_dims(self.mlp(time_emb), 1), 1)
-		print(f"time_emb mlp {temp}, shape {temp.shape}")
 		h += tf.expand_dims(
 			# tf.expand_dims(self.mlp(time_emb), -1), -1 # Original
 			# tf.expand_dims(self.mlp(time_emb), -1), 1 # failed
 			# tf.expand_dims(self.mlp(time_emb), 1), -1 # failed
 			tf.expand_dims(self.mlp(time_emb), 1), 1
 		)
-		print(f"h mlp {h}, shape {h.shape}")
 		h = self.block2(h, mask)
-		print(f"h block2 {h}, shape {h.shape}")
 		output = h + self.res_conv(x * mask)
-		print(f"output h + res_conv {output}, shape {output.shape}")
 		return output
 
 
@@ -119,12 +111,9 @@ class LinearAttention(layers.Layer):
 
 
 	def call(self, x):
-		print("In attention module")
 		# b, c, h, w = x.shape # Original
 		b, h, w, c = x.shape
-		print(f"b {b}, h {h}, w {w}, c {c}")
 		qkv = self.to_qkv(x)
-		print(f"qkv {qkv}, shape {qkv.shape}")
 		# q, k, v = rearrange(
 		# 	qkv, 'b (qkv heads c) h w -> qkv b heads c (h w)', 
 		# 	heads=self.heads, qkv=3
@@ -139,34 +128,23 @@ class LinearAttention(layers.Layer):
 
 		# Alternative curtesy of ChatGPT
 		q, k, v = tf.split(qkv, num_or_size_splits=3, axis=-1)
-		print(f"q {q}, shape {q.shape}")
-		print(f"k {k}, shape {k.shape}")
-		print(f"v {v}, shape {v.shape}")
 		# q = tf.reshape(q, [b, h * w, self.heads, -1]) # Original from chatGPT
 		# k = tf.reshape(k, [b, h * w, self.heads, -1]) # Original from chatGPT
 		# v = tf.reshape(v, [b, h * w, self.heads, -1]) # Original from chatGPT
 		q = tf.reshape(q, [b, -1, h * w, self.heads])
 		k = tf.reshape(k, [b, -1, h * w, self.heads])
 		v = tf.reshape(v, [b, -1, h * w, self.heads])
-		print(f"q {q}, shape {q.shape}")
-		print(f"k {k}, shape {k.shape}")
-		print(f"v {v}, shape {v.shape}")
 		# k = tfa.activations.sparsemax(k, axis=-1) # Original from chatGPT
 		# k = tfa.activations.sparsemax(k, axis=-2) # Changed axis to be the same proper dim as in Pytorch
 		# k = tf.nn.softmax(k, axis=-2) # Use softmax (with updated axis)
 		k = self.softmax(k) # Use tf.keras.layer softmax (with updated axis)
-		print(f"k softmax {k}, shape {k.shape}")
 		# context = tf.einsum('bhdc,bhpc->bhdp', v, k) # Original from chatGPT. Seems to OOM on GPU at this step (even when batch size is 4). Creates a tensor with shape (B, 32, 13760, 13760) <- Probably what caused the OOM.
 		context = tf.einsum('bdwc,bpwc->bdpc', v, k) # Creates a tensor with shape (B, 32, 32, 4)
-		print(f"context {context}, shape {context.shape}")
 		# out = tf.einsum('bhdp,bhdc->bhpc', context, q) # Original from chatGPT. Seems to OOM on GPU at this step (even when batch size is 4). Creates a tensor with shape (B, 32, 13760, 13760) <- Probably what caused the OOM.
 		out = tf.einsum('bhec,bhnc->benc', context, q) # Creates a tensor with shape (B, 32, 13760, 4)
-		print(f"out {out}, shape {out.shape}")
 		# out = tf.reshape(out, [b, h, w, self.heads * -1]) Original from chatGPT. Invalid
 		out = tf.reshape(out, [b, h, w, -1])
-		print(f"out rearranged {out}, shape {out.shape}")
 		temp = self.to_out(out)
-		print(f"out to_out {temp}, shape {temp.shape}")
 		return self.to_out(out)
 
 
@@ -257,30 +235,18 @@ class GradLogPEstimator2D(layers.Layer):
 	
 
 	def call(self, x, mask, mu, t, spk=None):
-		print(f"x {x}\nshape {x.shape}")
-		print(f"mask {mask}\nshape {mask.shape}")
-		print(f"mu {mu}\nshape {mu.shape}")
-		print(f"t {t}\nshape {t.shape}")
-		print(f"spk {spk}")
 		if not isinstance(spk, type(None)):
 			s = self.spk_mlp(spk)
 
 		t = self.time_pos_emb(t, scale=self.pe_scale)
-		print(f"t after time_pos_emb: {t}, shape {t.shape}")
 		t = self.mlp(t)
-		print(f"t after mlp: {t}, shape {t.shape}")
 
 		if self.n_spkrs < 2:
 			x = tf.stack([mu, x], axis=1)
-			print("less than 2 n_spkr (1 n_spkr)")
-			print(f"x after stack {x}, shape {x.shape}")
 		else:
 			s = tf.repeat(tf.expand_dims(s, -1), [1, 1, x.shape([-1])])
 			x = tf.stack([mu, x, s], axis=1)
-			print("more than 1 n_spkr")
-			print(f"x after stack {x}, shape {x.shape}")
 		mask = tf.expand_dims(mask, 1)
-		print(f"mask unsqueezed {mask}, shape {mask.shape}")
 
 		# Transpose so that correct dims are operated on.
 		mask = tf.transpose(mask, [0, 2, 3, 1])
@@ -318,12 +284,8 @@ class GradLogPEstimator2D(layers.Layer):
 			x = upsample(x * mask_up)
 
 		x = self.final_block(x, mask)
-		print(f"x final block {x}, shape {x.shape}")
 		output = self.final_conv(x * mask)
-		print(f"output final conv {output}, shape {output.shape}")
-		print(f"mask shape {mask.shape}")
 		temp = tf.squeeze(output * mask, -1)
-		print(f"output * mask squeezed shape {temp.shape}")
 
 		# return tf.squeeze(output * mask, 1) # Original
 		return  tf.squeeze(output * mask, -1)
@@ -356,25 +318,15 @@ class Diffusion(keras.Model):
 
 
 	def forward_diffusion(self, x0, mask, mu, t):
-		print(f"x0 {x0}, shape {x0.shape}")
-		print(f"mask {mask}, shape {mask.shape}")
-		print(f"mu {mu}, shape {mu.shape}")
-		print(f"t {t}, shape {t.shape}")
 		time = tf.expand_dims(tf.expand_dims(t, -1), -1)
-		print(f"time {time}, shape {time.shape}")
 		cum_noise = get_noise(
 			time, self.beta_min, self.beta_max, cumulative=True
 		)
-		print(f"cum_noise {cum_noise}, shape {cum_noise.shape}")
 		mean = x0 * tf.math.exp(-0.5 * cum_noise) +\
 			mu * (1.0 - tf.math.exp(-0.5 * cum_noise))
-		print(f"mean {mean}, shape {mean.shape}")
 		variance = 1.0 - tf.math.exp(-cum_noise)
-		print(f"variance {variance}, shape {variance.shape}")
 		z = tf.random.normal(x0.shape, dtype=x0.dtype)
-		print(f"z {z}, shape {z.shape}")
 		xt = mean + z * tf.math.sqrt(variance)
-		print(f"xt {xt}, shape {xt.shape}")
 		return xt * mask, z * mask
 
 
@@ -426,7 +378,6 @@ class Diffusion(keras.Model):
 
 
 	def compute_loss(self, x0, mask, mu, spk=None, offset=1e-5):
-		print(f"x0 {x0}, shape {x0.shape}")
 		t = tf.random.uniform(shape=(x0.shape[0],), dtype=x0.dtype)
 		t = tf.clip_by_value(t, offset, 1.0 - offset)
 		return self.loss_t(x0, mask, mu, t, spk)

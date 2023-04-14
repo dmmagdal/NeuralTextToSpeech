@@ -91,9 +91,6 @@ class GradTTS(keras.Model):
 		#	versa.
 		# (x, x_lengths, n_timesteps) = inputs
 
-		print(f"x {x}, shape {x.shape}")
-		print(f"x_lengths {x_lengths}, shape {x_lengths.shape}")
-
 		if self.n_spkr > 1:
 			# Get speaker embedding.
 			spk = self.spk_emb(spk)
@@ -101,9 +98,6 @@ class GradTTS(keras.Model):
 		# Get encoder outputs 'mu_x' and log-scalted token duration
 		# 'logw'.
 		mu_x, logw, x_mask = self.encoder(x, x_lengths, spk)
-		print(f"mu_x {mu_x}, shape {mu_x.shape}")
-		print(f"logw {logw}, shape {logw.shape}")
-		print(f"x_mask {x_mask}, shape {x_mask.shape}")
 
 		w = tf.math.exp(logw) * x_mask
 		w_ceil = tf.math.ceil(w) * length_scale
@@ -114,11 +108,6 @@ class GradTTS(keras.Model):
 		)
 		y_max_length = int(tf.math.reduce_max(y_lengths))
 		y_max_length_ = fix_len_compatibility(y_max_length)
-		print(f"w {w}, shape {w.shape}")
-		print(f"w_ceil {w_ceil}, shape {w_ceil.shape}")
-		print(f"y_lengths {y_lengths}, shape {y_lengths.shape}")
-		print(f"y_max_length {y_max_length}")
-		print(f"y_max_length_ {y_max_length_}")
 
 		# Using obtained 'w' construct alignment map 'attn'.
 		y_mask = tf.cast(
@@ -142,11 +131,6 @@ class GradTTS(keras.Model):
 			),
 			axis=1
 		)
-		print(f"y_mask {y_mask}, shape {y_mask.shape}")
-		print(f"attn_mask {attn_mask}, shape {attn_mask.shape}")
-		print(f"w_ceil squeeze {tf.squeeze(w_ceil, -1).shape}, attn_mask squeeze {tf.squeeze(attn_mask, -1).shape}")
-		print(f"attn {attn}, shape {attn.shape}")
-		print(f"mu_x {mu_x.shape}")
 
 		# Align encoded text and get mu_y.
 		mu_y = tf.linalg.matmul(
@@ -154,16 +138,12 @@ class GradTTS(keras.Model):
 			# tf.transpose(mu_x, [0, 2, 1]) # Original
 			mu_x # No transpose since mu_x already is in the desired shape.
 		)
-		print(f"mu_y {mu_y}, shape {mu_y.shape}")
 		mu_y = tf.transpose(mu_y, [0, 2, 1])
-		print(f"mu_y {mu_y}, shape {mu_y.shape}")
 		encoder_outputs = mu_y[:, :, :y_max_length]
-		print(f"encoder_outputs {encoder_outputs}, shape {encoder_outputs.shape}")
 
 		# Sample latent representation from terminal distribution
 		# N(mu_y, I).
 		z = mu_y + tf.random.uniform(mu_y.shape) / temperature
-		print(f"z {z}, shape {z.shape}")
 
 		# Generate sample by performing reverse dynamics.
 		y_mask = tf.transpose(y_mask, [0, 2, 1])
@@ -182,9 +162,6 @@ class GradTTS(keras.Model):
 			text_padded, input_lengths, mel_padded, output_lengths,
 			speaker_id, 
 		) = batch
-
-		print("In train step")
-		print(f"batch size: {tf.shape(text_padded)[0]}")
 
 		# tf.print(tf.shape(x[0]))
 		# y = (mel_padded, input_lengths, output_lengths)
@@ -234,7 +211,6 @@ class GradTTS(keras.Model):
 		#	rate) of segment to cut, on which decoder will be trained.
 		#	Should be divisible by 2^{num of UNet downsamplings}. 
 		#	Needed to increase batch size.
-		print(f"n_spkr: {self.n_spkr}, {spk}")
 
 		if self.n_spkr > 1:
 			# Get speaker embedding.
@@ -253,16 +229,11 @@ class GradTTS(keras.Model):
 		# attn_mask = tf.expand_dims(x_mask, 2) * tf.expand_dims(y_mask, -1) # Not valid
 		# attn_mask = tf.expand_dims(x_mask, -1) * tf.expand_dims(y_mask, 2) # Original (Not valid)
 		attn_mask = tf.expand_dims(x_mask, -2) * tf.expand_dims(y_mask, 1)
-		print(f"y_mask {y_mask}, {y_mask.shape}")
-		print(f"attn_mask {attn_mask}, {attn_mask.shape}")
 
 		# Use MAS to find most likely alignment 'attn' between text and
 		# mel-spectrogram.
 		const = -0.5 * math.log(2 * math.pi) * self.n_mel_channels#self.n_feats
 		factor = -0.5 * tf.ones(mu_x.shape, dtype=mu_x.dtype)
-		print(f"const {const}")
-		print(f"factor {factor}, {factor.shape}")
-		print(f"y ** 2 {y ** 2}, {(y ** 2).shape}")
 		# y_square = tf.linalg.matmul(
 		# 	tf.transpose(factor, [0, 2, 1]), y ** 2 # Original (not valid)
 		# )
@@ -273,28 +244,22 @@ class GradTTS(keras.Model):
 		y_square = tf.linalg.matmul(
 			factor, tf.transpose(y ** 2, [0, 2, 1]) # Original (not valid)
 		)
-		print(f"y_square {y_square}, {y_square.shape}")
 		# y_mu_double = tf.linalg.matmul(
 		# 	2.0 * tf.transpose((factor * mu_x), [0, 2, 1]), y Original (not Valid)
 		# )
 		y_mu_double = tf.linalg.matmul(
 			2.0 * (factor * mu_x), tf.transpose(y, [0, 2, 1])
 		)
-		print(f"y_mu_double {y_mu_double}, {y_mu_double.shape}")
 		mu_square = tf.expand_dims(
 			# tf.math.reduce_sum(factor * (mu_x ** 2), 1), -1 # Orignal
 			tf.math.reduce_sum(factor * (mu_x ** 2), -1), -1
 		)
-		print(f"mu_square {mu_square}, {mu_square.shape}")
 		log_prior = y_square - y_mu_double + mu_square + const
-		print(f"log_prior {log_prior}, {log_prior.shape}")
-		print(f"attn_mask {attn_mask}, {attn_mask.shape}")
 
 		attn = monotonic_align.maximum_path(
 			# log_prior, tf.squeeze(attn_mask, 1) # Original
 			log_prior, tf.squeeze(attn_mask, -1)
 		)
-		print(f"attn {attn}, {attn.shape}")
 
 		# Compute loss between predicted log-scaled durations and those
 		# obtained from MAS.
@@ -303,11 +268,7 @@ class GradTTS(keras.Model):
 			# 1e-8 + tf.math.reduce_sum(tf.expand_dims(attn, -1), 1)
 		) * tf.transpose(x_mask, [0, 2, 1])
 		attn_sum = tf.math.reduce_sum(tf.expand_dims(attn, 1), -1)
-		print(f"attn_sum {attn_sum}, {attn_sum.shape}")
-		print(f"x_mask {x_mask}, {x_mask.shape}")
-		print(f"logw_ {logw_}, {logw_.shape}")
 		dur_loss = duration_loss(logw, logw_, x_lengths)
-		print(f"dur_loss {dur_loss}, {dur_loss.shape}")
 
 		# Cut a small segment of mel-spectrogram in order to increase
 		# batch size.
@@ -315,11 +276,9 @@ class GradTTS(keras.Model):
 			max_offset = tf.clip_by_value(
 				(y_lengths - out_size), 0, tf.int32.max
 			)
-			print(f"max_offset {max_offset}, {max_offset.shape}")
 			offset_ranges = list(zip(
 				[0] * max_offset.shape[0], max_offset.numpy()
 			))
-			print(f"offset_ranges: {offset_ranges}, {len(offset_ranges)}")
 			out_offset = tf.convert_to_tensor(
 				[
 					random.choice(range(start, end)) 
@@ -328,7 +287,6 @@ class GradTTS(keras.Model):
 				],
 				dtype=tf.int64
 			)
-			print(f"out_offset {out_offset}, {out_offset.shape}")
 
 			attn_cut = np.zeros(
 			# attn_cut = tf.zeros(
@@ -336,7 +294,6 @@ class GradTTS(keras.Model):
 				# dtype=attn.dtype
 				dtype=np.float32
 			)
-			print(f"attn_cut: {attn_cut}, {attn_cut.shape}")
 			y_cut = np.zeros(
 			# y_cut = tf.zeros(
 				# [y.shape[0], self.n_feats, out_size], dtype=y.dtype
@@ -344,25 +301,19 @@ class GradTTS(keras.Model):
 				# dtype=y.dtype
 				dtype=np.float32
 			)
-			print(f"y_cut {y_cut}, {y_cut.shape}")
 			y_cut_lengths = []
 			for i, (y_, out_offset_) in enumerate(zip(y, out_offset)):
 				y_cut_length = out_size +\
 					tf.clip_by_value(
 						(y_lengths[i] - out_size), tf.float32.min, 0
 					)
-				print(f"y_cut_length {y_cut_length}, {y_cut_length.shape}")
 				y_cut_lengths.append(y_cut_length)
-				print(f"y_cut_lengths {y_cut_lengths}, {len(y_cut_lengths)}")
-				print(f"y_ type {type(y_)}")
-				print(f"y_ shape {y_.shape}")
-				print(f"y_cut shape {y_cut.shape}")
 				cut_lower, cut_upper = out_offset_, out_offset_ + y_cut_length
 				# y_cut[i, :, :y_cut_length] = y_.numpy()[:, cut_lower:cut_upper]
 				# attn_cut[i, :, :y_cut_length] = attn[i, :, cut_lower:cut_upper]
-				y_cut[i, :, :y_cut_length] = tf.transpose(y_, [1, 0]).numpy()[:, cut_lower:cut_upper]
-				print(f"attn shape {attn.shape}")
-				print(f"attn_cut shape {attn_cut.shape}")
+				y_cut[i, :, :y_cut_length] = tf.transpose(
+					y_, [1, 0]
+				).numpy()[:, cut_lower:cut_upper]
 				attn_cut[i, :, :y_cut_length] = attn[i, :, cut_lower:cut_upper]
 			y_cut_lengths = tf.convert_to_tensor(
 				y_cut_lengths, dtype=tf.int64
@@ -371,19 +322,13 @@ class GradTTS(keras.Model):
 				tf.expand_dims(sequence_mask(y_cut_lengths), -1), 
 				dtype=y_mask.dtype
 			)
-			print(f"y_cut_lengths {y_cut_lengths}, shape {y_cut_lengths.shape}, dtype {y_cut_lengths.dtype}")
-			print(f"y_cut_mask {y_cut_mask}, shape {y_cut_mask.shape}, dtype {y_cut_mask.dtype}")
 
 			attn = attn_cut
 			y = y_cut
 			y_mask = y_cut_mask 
 			y_mask = tf.transpose(y_mask, [0, 2, 1]) # Added to deal with the matrix multiplication in the forward diffusion process.
-			print(f"attn {attn}, shape {attn.shape}, dtype {attn.dtype}")
-			print(f"y {y}, shape {y.shape}, dtype {y.dtype}")
-			print(f"y_mask {y_mask}, shape {y_mask.shape}, dtype {y_mask.dtype}")
 
 		# Align encoded text with mel-spectrogram and get mu_y segment.
-		print(f"mu_x {mu_x.shape}")
 		mu_y = tf.linalg.matmul(
 			# tf.transpose(tf.squeeze(attn, -1), [0, 2, 1]),
 			# tf.transpose(tf.squeeze(attn, 1), [0, 2, 1]),
@@ -394,14 +339,10 @@ class GradTTS(keras.Model):
 			# tf.transpose(mu_x, [0, 2, 1])
 			mu_x
 		)
-		print(f"mu_y {mu_y}, shape {mu_y.shape}, dtype {mu_y.dtype}")
 		mu_y = tf.transpose(mu_y, [0, 2, 1]) # Tranpose may not be needed because decoder is a diffusion model which relies on a UNet and convolutional layers.
-		print(f"mu_y {mu_y}, shape {mu_y.shape}, dtype {mu_y.dtype}")
 
 		# Compute loss of score-based decoder.
 		diff_loss, xt = self.decoder.compute_loss(y, y_mask, mu_y, spk)
-		print(f"diff_loss {diff_loss}, shape {diff_loss.shape}")
-		print(f"xt {xt}, shape {xt.shape}")
 
 		# Compute loss between aligned encoder outputs and
 		# mel-spectrogram.
@@ -411,6 +352,5 @@ class GradTTS(keras.Model):
 		# prior_loss = prior_loss / (tf.math.reduce_sum(y_mask) * self.n_feats)
 		prior_loss = prior_loss /\
 			(tf.math.reduce_sum(y_mask) * self.n_mel_channels)
-		print(f"prior_loss {prior_loss}, shape {prior_loss.shape}")
 
 		return dur_loss, prior_loss, diff_loss
