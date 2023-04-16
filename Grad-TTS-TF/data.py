@@ -74,6 +74,9 @@ class Data:
 
 		os.makedirs(self.dataset_path, exist_ok=True)
 
+		self.max_input_len = -1
+		self.max_target_len = -1
+
 
 	def __getitem__(self, index):
 		# Separate filename and text
@@ -137,10 +140,7 @@ class Data:
 		return tf.convert_to_tensor(text_norm, dtype=tf.int64)
 
 
-	def generator(self):
-		self.max_input_len = 0
-		self.max_target_len = 0
-
+	def get_max_lengths(self):
 		# Compute the maximum input (text) and target
 		# (mel-spectrogram) lengths.
 		print("Isolating max input and target lengths...")
@@ -169,10 +169,43 @@ class Data:
 		print(f"Max input length {self.max_input_len}")
 		print(f"Max target length {self.max_target_len}")
 
+
+	def generator(self):
+		# Compute the maximum input (text) and target
+		# (mel-spectrogram) lengths.
+		if (self.max_input_len + self.max_target_len < 0):
+			self.get_max_lengths()
+
+		assert self.max_input_len != -1
+		assert self.max_target_len != -1
+
+		print(f"Max input length {self.max_input_len}")
+		print(f"Max target length {self.max_target_len}")
+
 		# Apply data collate function to each item in the dataset.
 		print("Applying data collator function...")
 		for idx in tqdm(range(len(self.audiopaths_and_text))):
 			yield self.collate_fn(self.__getitem__(idx))
+
+
+	def tensor_slices(self):
+		# Compute the maximum input (text) and target
+		# (mel-spectrogram) lengths.
+		if (self.max_input_len + self.max_target_len < 0):
+			self.get_max_lengths()
+
+		assert self.max_input_len != -1
+		assert self.max_target_len != -1
+
+		print(f"Max input length {self.max_input_len}")
+		print(f"Max target length {self.max_target_len}")
+
+		# Apply data collate function to each item in the dataset.
+		print("Applying data collator function...")
+		tensor_list = []
+		for idx in tqdm(range(len(self.audiopaths_and_text))):
+			tensor_list.append(self.collate_fn(self.__getitem__(idx)))
+		return tensor_list
 
 
 	def collate_fn(self, batch):

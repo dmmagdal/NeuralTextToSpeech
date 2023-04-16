@@ -41,7 +41,10 @@ def main():
 		mel_fmin=params.f_min,
 		mel_fmax=params.f_max
 	)
-	train_dataset = tf.data.Dataset.from_generator(
+	# train_data.get_max_lengths()				# Use in graph execution.
+	# train_text_max = train_data.max_input_len	# Use in graph execution.
+	# train_mel_max = train_data.max_target_len	# Use in graph execution.
+	train_dataset = tf.data.Dataset.from_generator( # Use in eager execution.
 		train_data.generator,
 		args=(),
 		output_signature=(
@@ -55,6 +58,20 @@ def main():
 			tf.TensorSpec(shape=(), dtype=tf.int64),				# speaker id
 		)
 	)
+	# train_dataset = tf.data.Dataset.from_generator( # Use in graph execution.
+	# 	train_data.generator,
+	# 	args=(),
+	# 	output_signature=(
+	# 		tf.TensorSpec(shape=(train_text_max,), dtype=tf.int64),	# text_encoded
+	# 		tf.TensorSpec(shape=(), dtype=tf.int64),				# input_lengths
+	# 		tf.TensorSpec(
+	# 			# shape=(None, n_mel_channels), dtype=tf.float32
+	# 			shape=(train_mel_max, params.n_feats), dtype=tf.float32
+	# 		),														# mel
+	# 		tf.TensorSpec(shape=(), dtype=tf.int64),				# output_lengths
+	# 		tf.TensorSpec(shape=(), dtype=tf.int64),				# speaker id
+	# 	)
+	# )
 	# train_dataset = train_dataset.batch(16, drop_remainder=True)
 	train_dataset = train_dataset.batch(8, drop_remainder=True)
 	valid_data = Data(
@@ -71,7 +88,10 @@ def main():
 		mel_fmin=params.f_min,
 		mel_fmax=params.f_max
 	)
-	valid_dataset = tf.data.Dataset.from_generator(
+	# valid_data.get_max_lengths()				# Use in graph execution.
+	# valid_text_max = valid_data.max_input_len	# Use in graph execution.
+	# valid_mel_max = valid_data.max_target_len	# Use in graph execution.
+	valid_dataset = tf.data.Dataset.from_generator( # Use in eager execution.
 		valid_data.generator,
 		args=(),
 		output_signature=(
@@ -85,6 +105,20 @@ def main():
 			tf.TensorSpec(shape=(), dtype=tf.int64),				# speaker id
 		)
 	)
+	# valid_dataset = tf.data.Dataset.from_generator( # Use in graph execution.
+	# 	valid_data.generator,
+	# 	args=(),
+	# 	output_signature=(
+	# 		tf.TensorSpec(shape=(valid_text_max,), dtype=tf.int64),	# text_encoded
+	# 		tf.TensorSpec(shape=(), dtype=tf.int64),				# input_lengths
+	# 		tf.TensorSpec(
+	# 			# shape=(None, n_mel_channels), dtype=tf.float32
+	# 			shape=(valid_mel_max, params.n_feats), dtype=tf.float32
+	# 		),														# mel
+	# 		tf.TensorSpec(shape=(), dtype=tf.int64),				# output_lengths
+	# 		tf.TensorSpec(shape=(), dtype=tf.int64),				# speaker id
+	# 	)
+	# )
 	# valid_dataset = train_dataset.batch(16, drop_remainder=True)
 	valid_dataset = train_dataset.batch(8, drop_remainder=True)
 	test_data = Data(
@@ -101,7 +135,10 @@ def main():
 		mel_fmin=params.f_min,
 		mel_fmax=params.f_max
 	)
-	test_dataset = tf.data.Dataset.from_generator(
+	# test_data.get_max_lengths()				# Use in graph execution.
+	# test_text_max = test_data.max_input_len	# Use in graph execution.
+	# test_mel_max = test_data.max_target_len	# Use in graph execution.
+	test_dataset = tf.data.Dataset.from_generator( # Use in eager execution.
 		test_data.generator,
 		args=(),
 		output_signature=(
@@ -115,6 +152,20 @@ def main():
 			tf.TensorSpec(shape=(), dtype=tf.int64),				# speaker id
 		)
 	)
+	# test_dataset = tf.data.Dataset.from_generator( # Use in graph execution.
+	# 	test_data.generator,
+	# 	args=(),
+	# 	output_signature=(
+	# 		tf.TensorSpec(shape=(test_text_max,), dtype=tf.int64),	# text_encoded
+	# 		tf.TensorSpec(shape=(), dtype=tf.int64),				# input_lengths
+	# 		tf.TensorSpec(
+	# 			# shape=(None, n_mel_channels), dtype=tf.float32
+	# 			shape=(test_mel_max, params.n_feats), dtype=tf.float32
+	# 		),														# mel
+	# 		tf.TensorSpec(shape=(), dtype=tf.int64),				# output_lengths
+	# 		tf.TensorSpec(shape=(), dtype=tf.int64),				# speaker id
+	# 	)
+	# )
 
 	# Initialize model.
 	model = GradTTS(
@@ -138,7 +189,7 @@ def main():
 	# Start training.
 	model.compile(
 		optimizer=optimizer, #loss=[loss, attention_kl_loss],
-		run_eagerly=True
+		run_eagerly=True # Uncomment to debug model/run in eager execution.
 	)
 
 	# Build model to get the summary (not a hard requirement but nice

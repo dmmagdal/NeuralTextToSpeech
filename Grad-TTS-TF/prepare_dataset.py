@@ -76,7 +76,7 @@ def main():
 	#	shape=(max_target_length, max_input_length))
 	# -> audiopath (dtype=tf.string, shape=())
 
-	data = tf.data.Dataset.from_generator(
+	data = tf.data.Dataset.from_generator( # Use in eager execution.
 		dataset.generator,
 		args=(),
 		output_signature=(

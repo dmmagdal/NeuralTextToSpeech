@@ -8,7 +8,8 @@ import tensorflow as tf
 def sequence_mask(length, max_length=None):
 	if max_length is None:
 		max_length = tf.math.reduce_max(length)
-	x = tf.range(int(max_length), dtype=length.dtype)
+	# x = tf.range(int(max_length), dtype=length.dtype)
+	x = tf.range(max_length, dtype=length.dtype)
 	return tf.expand_dims(x, 0) < tf.expand_dims(length, 1)
 
 

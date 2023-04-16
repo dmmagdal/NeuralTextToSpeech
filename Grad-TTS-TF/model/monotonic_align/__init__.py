@@ -14,14 +14,14 @@ def maximum_path(value, mask):
 	value = value * mask
 	device = value.device
 	dtype = value.dtype
-	# value = value.data.cpu().numpy().astype(np.float32)
-	value = value.numpy().astype(np.float32)
+	# value = value.data.cpu().numpy().astype(np.float32) # Original
+	value = value.numpy().astype(np.float32) # Eager mode. Won't work in Graph mode.
 	path = np.zeros_like(value).astype(np.int32)
-	# mask = mask.data.cpu().numpy()
+	# mask = mask.data.cpu().numpy() # Original
 	mask = mask.numpy()
 
 	t_x_max = mask.sum(1)[:, 0].astype(np.int32)
 	t_y_max = mask.sum(2)[:, 0].astype(np.int32)
 	maximum_path_c(path, value, t_x_max, t_y_max)
-	# return torch.from_numpy(path).to(device=device, dtype=dtype)
+	# return torch.from_numpy(path).to(device=device, dtype=dtype) # Original
 	return tf.convert_to_tensor(path, dtype=dtype)
