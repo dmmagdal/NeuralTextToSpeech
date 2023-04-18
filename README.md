@@ -25,6 +25,14 @@ Description: This repository attempts to replicate populate text-to-speech model
  - [paper](https://arxiv.org/pdf/2104.08189.pdf)
  - [code](https://github.com/NVIDIA/NeMo) (Note: No longer available on the Nvidia Nemo repo. Going through the commit history can find you the last revision of the code before it was removed)
 
+### GradTTS
+ - [paper](https://arxiv.org/pdf/2105.06337.pdf)
+ - [code](https://github.com/huawei-noah/Speech-Backbones/tree/main/Grad-TTS)
+
+### HiFi GAN
+ - [paper](https://arxiv.org/pdf/2010.05646.pdf)
+ - [code](https://github.com/jik876/hifi-gan)
+
 #### Misc
  - Add [submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules) to the repo
  - Audio Processing:
