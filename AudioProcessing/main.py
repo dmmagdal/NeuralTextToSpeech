@@ -6,12 +6,23 @@
 
 import numpy as np
 import tensorflow as tf
+import torch
+from layers import TacotronSTFT
 from load_audio import load_wav_scipy, load_wav_librosa, load_wav_tf
+from process_audio import get_mel_librosa, get_mel_spec_tf
 
 
 def main():
 	# Hyperparameters & variables.
 	path = "./LJ001-0001.wav"
+	max_wav_value = 32768.0
+	sampling_rate = 22050
+	filter_length = 1024
+	hop_length = 256
+	win_length = 1024
+	n_mel_channels = 80
+	mel_fmin = 0.0
+	mel_fmax = 8000.0
 
 	# -----------------------------------------------------------------
 	# Test the different ways of loading a wav file.
@@ -70,7 +81,35 @@ def main():
 	# mel-spectrograms.
 	print("CONVERT AUDIO TO MEL SPECTROGRAM:")
 
+	# PyTorch Tacotron 2 STFT (baseline).
+	# Convert scipy audio data to a float32 pytorch tensor (as seen in
+	# utils.py from the Nvidia Tacotron2 repo).
+	stft = TacotronSTFT(
+		filter_length, hop_length, win_length, n_mel_channels, 
+		sampling_rate, mel_fmin, mel_fmax
+	)
+	pytorch_audio = torch.FloatTensor(scipy_audio.astype(np.float32))
+	audio_norm = pytorch_audio / max_wav_value
+	audio_norm = audio_norm.unsqueeze(0)
+	audio_norm = torch.autograd.Variable(audio_norm, requires_grad=False)
+	melspec = stft.mel_spectrogram(audio_norm)
+	pytorch_melspec = torch.squeeze(melspec, 0)
+	print(f"PyTorch (Tacotron2 STFT) mel-spec shape: {pytorch_melspec.shape}")
 
+	# Tensorflow.
+	tf_melspec = get_mel_spec_tf(
+		path, filter_length, hop_length, win_length, n_mel_channels, 
+		sampling_rate, mel_fmin, mel_fmax
+	)
+	print(f"Tensorflow mel-spec shape: {tf_melspec.shape}")
+
+	# Librosa.
+	librosa_melspec = get_mel_librosa(
+		path, filter_length, hop_length, win_length, n_mel_channels
+	)
+	print(f"Librosa mel-spec shape: {librosa_melspec.shape}")
+
+	# 
 
 	print("-" * 72)
 
