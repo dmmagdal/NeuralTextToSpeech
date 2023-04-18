@@ -1,6 +1,6 @@
 # Audio Processing
 
-Description: This folder doesn't have any models in it. It attempts to look at different ways to load and process audio data across different libraries such as PyTorch, Tensorflow, Librosa, and Scipy.
+Description: This folder doesn't have any models in it. It attempts to look at different ways to load and process audio data across different libraries such as PyTorch, Tensorflow, Librosa, and Scipy. To get an overview of the different methods in which the data is loaded and processed, run the `main.py` file.
 
 
 ### Notes
@@ -18,4 +18,7 @@ Description: This folder doesn't have any models in it. It attempts to look at d
          * The `get_mel_tfio()` function relies on Tensorflow IO and isnt really tested.
          * The `get_spectrogram_tf()` function does not output an array of the expected shape. This is most likely because it extracts the magnitude of the spectrogram signal (thus making it a linear spectrogram and not mel spectrogram). The linear to mel weight matrix is multiplied with it to get the mel spectrogram (as seen in `get_mel_spec_tf()`).
          * The `get_spectrogram_tf()` function was pulled from the Keras [ASR with CTC example](https://keras.io/examples/audio/ctc_asr/#preprocessing) while `get_mel_spec_tf()` was pulled from the Keras [Mel-GAN Spectrogram Inversion Feature Matching example](https://keras.io/examples/audio/melgan_spectrogram_inversion/).
+             * This function is also used as the basis of `audio_processing_tf.py` which is used in all currently "active" models right now.
      * The `get_mel_spec_tf()` function outputs a shape that is different from `get_mel_librosa()` and `TacotronSTFT`, but that is because it is in the form `[n_mel_channels, melspec_length]` while the other two are in `[melspec_length, n_mel_chanhels]`. It is also important to note that the `melspec_length` from `get_mel_spec_tf()` is slightly shorter than from the other two functions (usually by 4 timesteps) while the `melspec_length` from `get_mel_librosa()` and `TacotronSTFT` match perfectly.
+     * A raw comparison of the mel spectrograms between the PyTorch TacotronSTFT, librosa, and Tensorflow shows that none of them match. This is sort of expected since the `melspec_length` for Tensorflow is different from librosa and TacotronSTFT and the data read using scipy is different from when librosa reads the same file. Since all are distinct, we need to measure the difference between their values (L2 or L1 loss/difference). Low loss means they're roughly the same.
+         * Update: After using the same workflow as in `data.py` (from "active" model folders), we've seen that the losses are brought down significantly between the tensorflow mel spectrogram & the other libraries. The workflow in `data.py` is meant to closely align with the workflow for processing mel spectrograms in Tacotron 2, further building on what is available in `audio_processing_tf.py`. That means mel-spectrogram extraction is currently pretty close to what is in the Tacotron 2 repo.

@@ -10,6 +10,7 @@ import torch
 from layers import TacotronSTFT
 from load_audio import load_wav_scipy, load_wav_librosa, load_wav_tf
 from process_audio import get_mel_librosa, get_mel_spec_tf
+from audio_processing_tf import STFT
 
 
 def main():
@@ -27,6 +28,7 @@ def main():
 	# -----------------------------------------------------------------
 	# Test the different ways of loading a wav file.
 	print("READ AUDIO FILE:")
+	print("-" * 32)
 
 	# Scipy.
 	scipy_audio, scipy_sr = load_wav_scipy(path)
@@ -39,6 +41,7 @@ def main():
 	# Tensorflow.
 	tf_audio, tf_sr = load_wav_tf(path)
 	print(f"Tensorflow read shape: {tf_audio.shape}")
+	print("-" * 32)
 
 	# All data is read to the same shape.
 	shape_match1 = scipy_audio.shape == librosa_audio.shape
@@ -80,6 +83,7 @@ def main():
 	# Test the different wasy of taking a wav file and converting it to
 	# mel-spectrograms.
 	print("CONVERT AUDIO TO MEL SPECTROGRAM:")
+	print("-" * 32)
 
 	# PyTorch Tacotron 2 STFT (baseline).
 	# Convert scipy audio data to a float32 pytorch tensor (as seen in
@@ -108,9 +112,84 @@ def main():
 		path, filter_length, hop_length, win_length, n_mel_channels
 	)
 	print(f"Librosa mel-spec shape: {librosa_melspec.shape}")
+	print("-" * 32)
 
-	# 
+	# All data arrays (converted to numpy) are the same.
+	tf_melspec = tf.transpose(tf_melspec, [1, 0])
+	melspec_match1 = np.array_equal(pytorch_melspec.numpy(), librosa_melspec)
+	melspec_match2 = np.array_equal(librosa_melspec, tf_melspec.numpy())
+	melspec_match3 = np.array_equal(pytorch_melspec.numpy(), tf_melspec.numpy())
 
+	# Output comparisons.
+	print(f"Data matching (raw):")
+	print(f"\tLibrosa ({librosa_melspec.dtype}) <-> PyTorch ({pytorch_melspec.numpy().dtype}): {melspec_match1}")
+	print(f"\tLibrosa ({librosa_melspec.dtype}) <-> Tensorflow ({tf_melspec.numpy().dtype}): {melspec_match2}")
+	print(f"\tPytorch ({pytorch_melspec.numpy().dtype}) <-> Tensorflow ({tf_melspec.numpy().dtype}): {melspec_match3}")
+
+	# Pad Tensorflow tensor since it is shorter than the others.
+	n_pad = pytorch_melspec.shape[-1] - tf_melspec.shape[-1]
+	tf_melspec = tf.pad(tf_melspec, [[0, 0], [0, n_pad]])
+
+	# Compute the L1 difference between all data arrays.
+	l1_loss = torch.nn.L1Loss()
+	melspec_l1_1 = l1_loss(torch.tensor(librosa_melspec), pytorch_melspec)
+	melspec_l1_2 = l1_loss(torch.tensor(librosa_melspec), torch.tensor(tf_melspec.numpy()))
+	melspec_l1_3 = l1_loss(pytorch_melspec, torch.tensor(tf_melspec.numpy()))
+
+	# Output L1 comparisons.
+	print(f"L1 (MAE) difference:")
+	print(f"\tLibrosa <-> PyTorch: {melspec_l1_1}")
+	print(f"\tLibrosa <-> Tensorflow: {melspec_l1_2}")
+	print(f"\tPytorch <-> Tensorflow: {melspec_l1_3}")
+
+	# Compute the L2 difference between all data arrays.
+	l2_loss = torch.nn.MSELoss()
+	melspec_l2_1 = l2_loss(torch.tensor(librosa_melspec), pytorch_melspec)
+	melspec_l2_2 = l2_loss(torch.tensor(librosa_melspec), torch.tensor(tf_melspec.numpy()))
+	melspec_l2_3 = l2_loss(pytorch_melspec, torch.tensor(tf_melspec.numpy()))
+
+	# Output comparisons.
+	print(f"L2 (MSE) difference:")
+	print(f"\tLibrosa <-> PyTorch: {melspec_l2_1}")
+	print(f"\tLibrosa <-> Tensorflow: {melspec_l2_2}")
+	print(f"\tPytorch <-> Tensorflow: {melspec_l2_3}")
+
+	# Fully process the data in Tensorflow just how it is done in
+	# data.py (the data loading module in all active model folders).
+	# This is meant to also more closely follow the data loading done
+	# in Tacotron 2.
+	tf_STFT = STFT(
+		filter_length, win_length, hop_length, n_mel_channels, sampling_rate, mel_fmin, mel_fmax
+	)
+	tf_audio_norm = tf_audio / max_wav_value
+	# tf_audio_norm = tf.expand_dims(tf_audio_norm, 0)
+	tf_stft_melspec = tf_STFT.mel_spectrogram(tf_audio_norm)
+
+	tf_stft_melspec = tf.transpose(tf_stft_melspec, [1, 0])
+
+	# Pad Tensorflow tensor since it is shorter than the others.
+	n_pad = pytorch_melspec.shape[-1] - tf_stft_melspec.shape[-1]
+	tf_stft_melspec = tf.pad(tf_stft_melspec, [[0, 0], [0, n_pad]])
+
+	# Recalculate L1 difference between the tensorflow data array and 
+	# the rest.
+	melspec_l1_tf_2 = l1_loss(torch.tensor(librosa_melspec), torch.tensor(tf_stft_melspec.numpy()))
+	melspec_l1_tf_3 = l1_loss(pytorch_melspec, torch.tensor(tf_stft_melspec.numpy()))
+
+	# Output comparisons.
+	print(f"L1 (MAE) difference (Tensorflow STFT):")
+	print(f"\tLibrosa <-> Tensorflow: {melspec_l1_tf_2}")
+	print(f"\tPytorch <-> Tensorflow: {melspec_l1_tf_3}")
+
+	# Recalculate L2 difference between the tensorflow data array and 
+	# the rest.
+	melspec_l2_tf_2 = l2_loss(torch.tensor(librosa_melspec), torch.tensor(tf_stft_melspec.numpy()))
+	melspec_l2_tf_3 = l2_loss(pytorch_melspec, torch.tensor(tf_stft_melspec.numpy()))
+
+	# Output comparisons.
+	print(f"L2 (MSE) difference (Tensorflow STFT):")
+	print(f"\tLibrosa <-> Tensorflow: {melspec_l2_tf_2}")
+	print(f"\tPytorch <-> Tensorflow: {melspec_l2_tf_3}")
 	print("-" * 72)
 
 	# Exit the program.
