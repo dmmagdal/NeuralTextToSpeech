@@ -1,5 +1,5 @@
-# layers.py
-# This is a test file for tracking the general shape of inpputs and
+# test-layers.py
+# This is a test file for tracking the general shape of inputs and
 # their lengths for the Grad-TTS TextEncoder module (particularly, the
 # beginning components with the ConvReLUNorm Prenet).
 # Tensorflow 2.7.0
