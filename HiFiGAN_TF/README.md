@@ -16,7 +16,8 @@ Description: HiFi-GAN is a GAN based vocoder used with neural text to speech mod
      * Iron out the padding for the conv layers
      * Go back and add weight initializer for respective layers
      * Implement initialization, training loop, model saving/loading, and compiling in `gan.py`. Alternatively, implement everything in `train.py`
- 2. Implement everything required for training (this can be done either in `gan.py` or `train.py`)
+ 2. Implement data loading
+ 3. Implement everything required for training (this can be done either in `gan.py` or `train.py`)
      * Model initialization
      * Model compilation
          * Model loss
