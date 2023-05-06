@@ -42,3 +42,6 @@ Description: This repository attempts to replicate populate text-to-speech model
     - Process Audio with Tensorflow [medium article](https://towardsdatascience.com/how-to-easily-process-audio-on-your-gpu-with-tensorflow-2d9d91360f06)
  - Create Tensorflow Records [medium article](https://medium.com/nerd-for-tech/how-to-create-tensorflow-tfrecords-out-of-any-dataset-c64c3f98f4f8)
  - Create Tensorflow Records Keras [example](https://keras.io/examples/keras_recipes/creating_tfrecords/)
+ - Neural TTS [blog post](https://www.readspeaker.ai/blog/neural-tts/)
+ - Voice Cloning using Deep Learning [Medium article](https://medium.com/the-research-nest/voice-cloning-using-deep-learning-166f1b8d8595)
+ - Voice Cloning for beginners [Medium article](https://medium.com/mlearning-ai/voice-cloning-for-beginners-in-8-minutes-db046e009a70) (TorToiseTTS)
