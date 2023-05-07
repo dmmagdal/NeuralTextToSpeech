@@ -69,7 +69,8 @@ class STFT:
 		# Adjust the shape of the signal if it is of shape
 		# (wav_length, 1).
 		if len(tf.shape(x)) == 2:
-			x = tf.squeeze(x, axis=-1)
+			# x = tf.squeeze(x, axis=-1)
+			x = tf.squeeze(x, axis=0)
 
 		assert len(tf.shape(x)) == 1, "Invalid signal shape {}, expected (wav_length,)".format(tf.shape(x))
 
@@ -93,39 +94,3 @@ class STFT:
 
 		# Return the mel spectrogram.
 		return mel_spec
-
-
-# Code from ChatGPT. This essentially does the same thing as above 
-# (hyperparameters subject to change):
-'''
-import tensorflow as tf
-import numpy as np
-import librosa
-
-# Load the audio file
-audio, sr = librosa.load('path/to/audio.wav', sr=None, mono=True)
-
-# Convert the audio to a TensorFlow constant
-audio = tf.constant(audio, dtype=tf.float32)
-
-# Apply the preemphasis filter to the audio
-preemph_audio = tf.signal.preemphasis(audio, coefficient=0.97) # This does not exist in TF 2.0 at all
-
-# Compute the STFT of the audio
-stft = tf.signal.stft(preemph_audio, frame_length=1024, frame_step=512, fft_length=1024)
-
-# Compute the magnitude spectrogram of the STFT
-magnitude = tf.abs(stft)
-
-# Create the mel filterbank
-mel_filterbank = tf.signal.linear_to_mel_weight_matrix(num_mel_bins=80, num_spectrogram_bins=513, sample_rate=sr, lower_edge_hertz=0.0, upper_edge_hertz=8000.0)
-
-# Apply the mel filterbank to the magnitude spectrogram
-mel_spectrogram = tf.matmul(tf.square(magnitude), mel_filterbank)
-
-# Convert the mel spectrogram to decibels
-log_mel_spectrogram = tf.math.log(mel_spectrogram + 1e-6)
-
-# Convert the spectrogram to a NumPy array for plotting or further processing
-log_mel_spectrogram = log_mel_spectrogram.numpy()
-'''
