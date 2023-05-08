@@ -37,7 +37,6 @@ def main():
 	# f0_method = 'pyin'
 	# batch_size = 1
 
-	# dataset = TTSDataset(
 	dataset = Data(
 		dataset_path, # dataset_path
 		filelist, # filelist_path
