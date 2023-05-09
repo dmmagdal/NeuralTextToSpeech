@@ -22,19 +22,22 @@ class ResBlock1(layers.Layer):
 		self.convs1 = [
 			WeightNorm(
 				layers.Conv1D(
-					channels, kernel_size, strides=1, dilation=dilation[0],
+					channels, kernel_size, strides=1, 
+					dilation_rate=dilation[0],
 					padding=get_padding(kernel_size, dilation[0])
 				)
 			),
 			WeightNorm(
 				layers.Conv1D(
-					channels, kernel_size, strides=1, dilation=dilation[1],
+					channels, kernel_size, strides=1, 
+					dilation_rate=dilation[1],
 					padding=get_padding(kernel_size, dilation[1])
 				)
 			),
 			WeightNorm(
 				layers.Conv1D(
-					channels, kernel_size, strides=1, dilation=dilation[2],
+					channels, kernel_size, strides=1, 
+					dilation_rate=dilation[2],
 					padding=get_padding(kernel_size, dilation[2])
 				)
 			),
@@ -42,19 +45,19 @@ class ResBlock1(layers.Layer):
 		self.convs2 = [
 			WeightNorm(
 				layers.Conv1D(
-					channels, kernel_size, strides=1, dilation=1,
+					channels, kernel_size, strides=1, dilation_rate=1,
 					padding=get_padding(kernel_size, 1)
 				)
 			),
 			WeightNorm(
 				layers.Conv1D(
-					channels, kernel_size, strides=1, dilation=1,
+					channels, kernel_size, strides=1, dilation_rate=1,
 					padding=get_padding(kernel_size, 1)
 				)
 			),
 			WeightNorm(
 				layers.Conv1D(
-					channels, kernel_size, strides=1, dilation=1,
+					channels, kernel_size, strides=1, dilation_rate=1,
 					padding=get_padding(kernel_size, 1)
 				)
 			),
@@ -81,13 +84,15 @@ class ResBlock2(layers.Layer):
 		self.convs = [
 			WeightNorm(
 				layers.Conv1D(
-					channels, kernel_size, strides=1, dilation=dilation[0],
+					channels, kernel_size, strides=1, 
+					dilation_rate=dilation[0],
 					padding=get_padding(kernel_size, dilation[0])
 				)
 			),
 			WeightNorm(
 				layers.Conv1D(
-					channels, kernel_size, strides=1, dilation=dilation[1],
+					channels, kernel_size, strides=1, 
+					dilation_rate=dilation[1],
 					padding=get_padding(kernel_size, dilation[1])
 				)
 			),
@@ -141,8 +146,8 @@ class Generator(keras.Model):
 			)
 		)
 
-		self.upLeakyReLU(LRELU_SLOPE)
-		self.leakyReLU()
+		self.upLeakyReLU = layers.LeakyReLU(LRELU_SLOPE)
+		self.leakyReLU = layers.LeakyReLU()
 
 	
 	def call(self, x, training=None):
@@ -226,11 +231,11 @@ class DiscriminatorP(layers.Layer):
 		x - tf.reshape(x, [b, t // self.period, self.period, c])
 
 		for l in self.convs:
-			x = l(x)
+			x = l(x, training)
 			# x = layers.LeakyReLU(LRELU_SLOPE)(x) # Original
 			x = self.convsLeakyReLU(x)
 			fmap.append(x)
-		x = self.conv_post(x)
+		x = self.conv_post(x, training)
 		fmap.append(x)
 		# x = torch.flatten(x, 1, -1)
 		x = self.flatten(x)
@@ -251,14 +256,25 @@ class MultiPeriodDiscriminator(keras.Model):
 		]
 
 
-	def call(self, y, y_hat):
+	def build(self, input_shape):
+		# y_shape, y_hat_shape = input_shape
+
+		for _, d in enumerate(self.discriminators):
+			d.build(input_shape)
+
+		super(MultiPeriodDiscriminator, self).build(input_shape)
+
+
+	# def call(self, y, y_hat, training=None):
+	def call(self, x, training=None):
+		y, y_hat = x
 		y_d_rs = []
 		y_d_gs = []
 		fmap_rs = []
 		fmap_gs = []
 		for _, d in enumerate(self.discriminators):
-			y_d_r, fmap_r = d(y)
-			y_d_g, fmap_g = d(y_hat)
+			y_d_r, fmap_r = d(y, training)
+			y_d_g, fmap_g = d(y_hat, training)
 			y_d_rs.append(y_d_r)
 			fmap_rs.append(fmap_r)
 			y_d_gs.append(y_d_g)
@@ -334,11 +350,11 @@ class DiscriminatorS(layers.Layer):
 		# models#privileged_training_argument_in_the_call_method
 
 		for l in self.convs:
-			x = l(x)
+			x = l(x, training)
 			# x = layers.LeakyReLU(LRELU_SLOPE)(x) # Original
 			x = self.convsLeakyReLU(x)
 			fmap.append(x)
-		x = self.conv_post(x)
+		x = self.conv_post(x, training)
 		fmap.append(x)
 		# x = torch.flatten(x, 1, -1)
 		x = self.flatten(x)
@@ -365,7 +381,22 @@ class MultiScaleDiscriminator(keras.Model):
 		]
 
 
-	def call(self, y, y_hat):
+	def build(self, input_shape):
+		# y_shape, y_hat_shape = input_shape
+
+		for i, d in enumerate(self.discriminators):
+			if i != 0:
+				# self.mean_pools[i - 1].build(None)  # No specific input shape needed
+				self.mean_pools[i - 1].build(input_shape)
+			# d.build(y_shape if i == 0 else self.mean_pools[i - 1].compute_output_shape(y_shape))
+			d.build(input_shape if i == 0 else self.mean_pools[i - 1].compute_output_shape(input_shape))
+
+		super(MultiScaleDiscriminator, self).build(input_shape)
+
+
+	# def call(self, y, y_hat, training=None):
+	def call(self, x, training=None):
+		y, y_hat = x
 		y_d_rs = []
 		y_d_gs = []
 		fmap_rs = []
@@ -374,11 +405,140 @@ class MultiScaleDiscriminator(keras.Model):
 			if i != 0:
 				y = self.mean_pools[i - 1](y)
 				y_hat = self.mean_pools[i - 1](y_hat)
-			y_d_r, fmap_r = d(y)
-			y_d_g, fmap_g = d(y_hat)
+			y_d_r, fmap_r = d(y, training)
+			y_d_g, fmap_g = d(y_hat, training)
 			y_d_rs.append(y_d_r)
 			fmap_rs.append(fmap_r)
 			y_d_gs.append(y_d_g)
 			fmap_gs.append(fmap_g)
 
 		return y_d_rs, y_d_gs, fmap_rs, fmap_gs
+	
+
+def get_mpd(input_shape1, input_shape2):
+	discriminators = [
+		DiscriminatorP(2),
+		DiscriminatorP(3),
+		DiscriminatorP(5),
+		DiscriminatorP(7),
+		DiscriminatorP(11),
+	]
+
+	y = layers.Input(input_shape1)
+	y_hat = layers.Input(input_shape2)
+	y_d_rs = []
+	y_d_gs = []
+	fmap_rs = []
+	fmap_gs = []
+	for _, d in enumerate(discriminators):
+		y_d_r, fmap_r = d(y)
+		y_d_g, fmap_g = d(y_hat)
+		y_d_rs.append(y_d_r)
+		fmap_rs.append(fmap_r)
+		y_d_gs.append(y_d_g)
+		fmap_gs.append(fmap_g)
+
+		return keras.Model(
+		inputs=[y, y_hat], outputs=[y_d_rs, y_d_gs, fmap_rs, fmap_gs],
+		name="MultiPeriodDiscriminator"
+	)
+
+
+def get_generator(input_shape, hparams):
+		num_kernels = len(hparams.resblock_kernel_sizes)
+		num_upsamples = len(hparams.upsample_rates)
+		conv_pre = WeightNorm(
+			layers.Conv1D(
+				hparams.upsample_initial_channel, 7, 1, #padding=3
+			)
+		)
+		resblock = ResBlock1 if hparams.resblock == '1' else ResBlock2
+
+		ups = []
+		for i, (u, k) in enumerate(zip(hparams.upsample_rates, hparams.upsample_kernel_sizes)):
+			ups.append(
+				WeightNorm(
+					layers.Conv1DTranspose(
+						hparams.upsample_initial_channel // (2 ** (i + 1)),
+						kernel_size=k, strides=u, #padding=(k - u) // 2
+					)
+				)
+			)
+
+		resblocks = []
+		for i in range(len(ups)):
+			ch = hparams.upsample_initial_channel // (2 ** (i + 1))
+			for j, (k, d) in enumerate(zip(hparams.resblock_kernel_sizes, hparams.resblock_dilation_sizes)):
+				resblocks.append(resblock(hparams, ch, k, d))
+
+		conv_post = WeightNorm(
+			layers.Conv1D(
+				1, kernel_size=7, strides=1, #padding=3
+			)
+		)
+
+		upLeakyReLU = layers.LeakyReLU(LRELU_SLOPE)
+		leakyReLU = layers.LeakyReLU()
+
+		inp = layers.Input(input_shape)
+		# x = conv_pre(x)
+		x = conv_pre(inp)
+		for i in range(num_upsamples):
+			# x = layers.LeakyReLU(LRELU_SLOPE)(x) # Original
+			x = upLeakyReLU(x)
+			x = ups[i](x)
+			xs = None
+			for j in range(num_kernels):
+				if xs is None:
+					xs = resblocks[i * num_kernels + j](x)
+				else:
+					xs += resblocks[i * num_kernels + j](x)
+			x = xs / num_kernels
+		# x = layers.LeakyReLU()(x) # Original
+		x = leakyReLU(x)
+		x = conv_post(x)
+		# x = tf.math.tanh(x)
+		out = tf.math.tanh(x)
+
+		return keras.Model(
+			inputs=[inp], outputs = [out], name="Generator"
+		)
+
+
+def get_msd(input_shape1, input_shape2):
+	discriminators = [
+		DiscriminatorS(use_spectral_norm=True),
+		DiscriminatorS(),
+		DiscriminatorS(),
+	]
+
+	mean_pools = [
+		layers.AveragePooling1D(
+			pool_size=4, strides=2, padding="same" #padding=2 # valid padding is same or valid
+		),
+		layers.AveragePooling1D(
+			pool_size=4, strides=2, padding="same" #padding=2 # valid padding is same or valid
+		),
+	]
+
+	y = layers.Input(input_shape1)
+	y_hat = layers.Input(input_shape2)
+	y_d_rs = []
+	y_d_gs = []
+	fmap_rs = []
+	fmap_gs = []
+	for i, d in enumerate(discriminators):
+		if i != 0:
+			y = mean_pools[i - 1](y)
+			y_hat = mean_pools[i - 1](y_hat)
+		y_d_r, fmap_r = d(y)
+		y_d_g, fmap_g = d(y_hat)
+		y_d_rs.append(y_d_r)
+		fmap_rs.append(fmap_r)
+		y_d_gs.append(y_d_g)
+		fmap_gs.append(fmap_g)
+
+	return keras.Model(
+		inputs=[y, y_hat], outputs=[y_d_rs, y_d_gs, fmap_rs, fmap_gs],
+		name="MultiScaleDiscriminator"
+	)

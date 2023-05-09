@@ -28,4 +28,10 @@ def init_weights(mean=0.0, std=0.1):
 
 def get_padding(kernel_size, dilation=1):
 	padding = int((kernel_size * dilation - dilation) / 2)
+	if padding == 0:
+		padding = "valid" # No padding
+	elif padding == 1:
+		padding = "causal" # Causal/dilated convolutions (see tf.keras.layers.Conv1D documentation for more). Only applies to conv1d
+	else:
+		padding = "same" # Pad zeroes evenly along tensor (left/right and/or up/down)
 	return padding
