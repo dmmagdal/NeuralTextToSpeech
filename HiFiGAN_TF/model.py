@@ -228,7 +228,7 @@ class DiscriminatorP(layers.Layer):
 			x = tf.pad(x, [[0, n_pad]], "REFLECT")
 			t = t + n_pad
 		# x = x.view(b, c, t // self.period, self.period)
-		x - tf.reshape(x, [b, t // self.period, self.period, c])
+		x = tf.reshape(x, [b, t // self.period, self.period, c])
 
 		for l in self.convs:
 			x = l(x, training)

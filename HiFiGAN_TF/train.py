@@ -7,6 +7,7 @@ import argparse
 import tensorflow as tf
 from model import Generator
 from model import MultiPeriodDiscriminator, MultiScaleDiscriminator
+from model import get_generator, get_mpd, get_msd
 from gan import HiFiGAN
 from hparams import HParams
 
@@ -42,7 +43,13 @@ if __name__ == '__main__':
 	mpd = MultiPeriodDiscriminator()
 	msd = MultiScaleDiscriminator()
 
+	gen = get_generator((None, hparams.num_mels), hparams)
+	mpd2 = get_mpd((None,), (None,))
+	msd2 = get_msd((None,), (None,))
+	gen.summary()
+	mpd2.summary()
+	msd2.summary()
+
 	gan = HiFiGAN(hparams, generator, mpd, msd)
-	gan.build()
 
 	# main()
