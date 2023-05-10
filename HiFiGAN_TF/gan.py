@@ -49,14 +49,6 @@ class HiFiGAN(keras.Model):
 		)
 
 
-	def build(self):
-		self.generator.build(input_shape=(None, None, self.hparams.num_mels)) # (batch_size, len, n_mels)
-		self.mpd.build(input_shape=(None, None,))
-		# self.mpd.build(input_shape=((None, None,), (None, None,))) # ()
-		# self.mpd.build(input_shape1=(None, None,), input_shape2=(None, None,)) # ()
-		# self.msd.build(input_shape=((None, None,), (None, None,)))
-
-
 	def call(self, audio):
 		return tf.cast(self.generator(audio), dtype=tf.int16)
 
@@ -73,7 +65,7 @@ class HiFiGAN(keras.Model):
 
 			# MPD.
 			y_df_hat_r, y_df_hat_g, _, _ = self.mpd(
-				y, tf.identity(y_g_hat)
+				(y, tf.identity(y_g_hat)), training=True
 			)
 			loss_disc_f, losses_disc_f_r, losses_disc_f_g = self.discriminator_loss(
 				y_df_hat_r, y_df_hat_g
@@ -81,7 +73,7 @@ class HiFiGAN(keras.Model):
 
 			# MSD.
 			y_ds_hat_r, y_ds_hat_g, _, _ = self.msd(
-				y, tf.identity(y_g_hat)
+				(y, tf.identity(y_g_hat)), training=True
 			)
 			loss_disc_s, losses_disc_s_r, losses_disc_s_g = self.discriminator_loss(
 				y_ds_hat_r, y_ds_hat_g
@@ -94,10 +86,10 @@ class HiFiGAN(keras.Model):
 			loss_mel = self.l1_loss(y_mel, y_g_hat_mel) * 45
 
 			y_df_hat_r, y_df_hat_g, fmap_f_r, fmap_f_g = self.mpd(
-				y, y_g_hat, training=True
+				(y, y_g_hat), training=True
 			)
 			y_ds_hat_r, y_ds_hat_g, fmap_s_r, fmap_s_g = self.msd(
-				y, y_g_hat, training=True
+				(y, y_g_hat), training=True
 			)
 			loss_fm_f = self.feature_loss(fmap_f_r, fmap_f_g)
 			loss_fm_s = self.feature_loss(fmap_s_r, fmap_s_g)

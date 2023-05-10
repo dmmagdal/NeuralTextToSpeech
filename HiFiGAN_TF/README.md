@@ -12,6 +12,7 @@ Description: HiFi-GAN is a GAN based vocoder used with neural text to speech mod
  * Changes from the [Original Repo](https://github.com/jik876/hifi-gan):
      * The training and validation files are specified via the arguments passed into `train.py`. I swapped that out for the setup that I have in GradTTS & FastPitch, where the files are in a folder called 'filelists/` and read from there.
      * `mel_dataset.py` is an attempt to emulate the original data loading function from PyTorch. Given that the original uses `scipy.io.wavfile.read()` to read in the audio data, there will be some slight differences in the data when compared to using tensorflow to read in the audio (as shown in the `AudioProcessing/` folder). Thus, there isn't really a reason to use it over the `data.py` module that's been create and used across the other audio models.
+ * Tried to add a `build()` call for the models (generator and discriminators) but found it quite cumbersome. For that reason, I've also created methods to initialize the models via Tensorflow's functional API. I dont like it compared to sub-classing `tf.keras.Model` but the models can be built immediately after initialization.
 
 
 ### TODO List (for V1 release)

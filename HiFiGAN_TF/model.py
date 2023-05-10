@@ -256,15 +256,6 @@ class MultiPeriodDiscriminator(keras.Model):
 		]
 
 
-	def build(self, input_shape):
-		# y_shape, y_hat_shape = input_shape
-
-		for _, d in enumerate(self.discriminators):
-			d.build(input_shape)
-
-		super(MultiPeriodDiscriminator, self).build(input_shape)
-
-
 	# def call(self, y, y_hat, training=None):
 	def call(self, x, training=None):
 		y, y_hat = x
@@ -379,19 +370,6 @@ class MultiScaleDiscriminator(keras.Model):
 				pool_size=4, strides=2, padding="same" #padding=2 # valid padding is same or valid
 			),
 		]
-
-
-	def build(self, input_shape):
-		# y_shape, y_hat_shape = input_shape
-
-		for i, d in enumerate(self.discriminators):
-			if i != 0:
-				# self.mean_pools[i - 1].build(None)  # No specific input shape needed
-				self.mean_pools[i - 1].build(input_shape)
-			# d.build(y_shape if i == 0 else self.mean_pools[i - 1].compute_output_shape(y_shape))
-			d.build(input_shape if i == 0 else self.mean_pools[i - 1].compute_output_shape(input_shape))
-
-		super(MultiScaleDiscriminator, self).build(input_shape)
 
 
 	# def call(self, y, y_hat, training=None):
