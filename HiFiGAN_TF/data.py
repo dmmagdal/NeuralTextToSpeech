@@ -6,6 +6,7 @@
 
 
 import os
+import math
 import random
 import librosa
 import numpy as np
@@ -37,6 +38,192 @@ def load_wav_to_tensorflow(full_path):
 
 
 class Data:
+	def __init__(self, filelist_path, segment_size, filter_length=1024,
+			n_mel_channels=80, hop_length=256, win_length=1024, 
+			sampling_rate=22050, mel_fmin=0.0, mel_fmax=8000, 
+			split=True, shuffle=True, mel_fmax_loss=None, 
+			fine_tuning=False, base_mels_path=None, n_speakers=1):
+		# File locations.
+		self.audiopaths_and_text = load_filepaths_and_text(
+			filelist_path
+		)
+		self.base_mels_path = base_mels_path
+
+		# STFT.
+		self.filter_length = filter_length # same as n_fft
+		self.n_mel_channels = n_mel_channels
+		self.sampling_rate = sampling_rate
+		self.hop_length = hop_length
+		self.win_length = win_length
+		self.mel_fmin = mel_fmin
+		self.mel_fmax = mel_fmax
+		self.mel_fmax_loss = mel_fmax_loss # replaces mel_fmax for mel_loss
+
+		self.stft = STFT(
+			filter_length=filter_length, frame_step=hop_length,
+			frame_length=win_length, sampling_rate=sampling_rate,
+			mel_fmin=mel_fmin, mel_fmax=mel_fmax
+		)
+		self.stft_loss = STFT(
+			filter_length=filter_length, frame_step=hop_length,
+			frame_length=win_length, sampling_rate=sampling_rate,
+			mel_fmin=mel_fmin, 
+			mel_fmax=mel_fmax_loss if mel_fmax_loss else mel_fmax
+		) # added for mel_loss
+
+		# Randomness.
+		random.seed(1234)
+		if shuffle:
+			random.shuffle(self.audiopaths_and_text)
+
+		# Audio loading.
+		self.segment_size = segment_size
+		self.n_speakers = n_speakers
+		self.max_wav_value = 32768.0
+
+		# Fine-tuning vs training & split.
+		self.fine_tuning = fine_tuning
+		self.split = split
+
+
+	def __getitem__(self, index):
+		# Separate filename and text
+		if self.n_speakers > 1:
+			audiopath, _, _ = self.audiopaths_and_text[index]
+		else:
+			audiopath, _ = self.audiopaths_and_text[index]
+
+		return self.get_mel_audio(audiopath)
+
+
+	def __len__(self):
+		return len(self.audiopaths_and_text)
+
+
+	def get_mel_audio(self, filename):
+		# Load audio from wav.
+		audio, sampling_rate = load_wav_to_tensorflow(filename)
+		if sampling_rate != self.stft.sampling_rate:
+			raise ValueError(
+				"{} SR doesn't match target {} SR".format(
+					sampling_rate, self.stft.sampling_rate
+				)
+			)
+		audio_norm = audio / self.max_wav_value
+		audio_norm = tf.expand_dims(audio_norm, 0)
+		audio = audio_norm
+
+		# Different behavior for fine-tuning vs training from scratch.
+		if not self.fine_tuning:
+			if self.split:
+				if audio.shape[1] >= self.segment_size:
+					# Subsample the audio if it is too large (larger
+					# than segment_size) into a piece that is
+					# segment_size.
+					max_audio_start = audio.shape[1] - self.segment_size
+					audio_start = random.randint(00, max_audio_start)
+					audio = audio.numpy()[
+						:, audio_start:audio_start + self.segment_size
+					]
+				else:
+					# Pad the audio if it is too small (shorter than
+					# segment_size) to segment_size.
+					audio = tf.pad(
+						audio, 
+						[[0, self.segment_size - audio.shape[1]]], 
+						"CONSTANT"
+					)
+
+				# I added this to convert the audio back to tensorflow
+				# tensor.
+				audio = tf.convert_to_tensor(audio)
+			
+			# Extract the audio mel-spectrogram.
+			mel = self.stft.mel_spectrogram(audio)
+		else:
+			# Load mel-spectrogram processed from Tacotron2 teacher
+			# forcing.
+			mel = np.load(
+				os.path.join(
+					self.base_mels_path,
+					os.path.splitext(os.path.split(filename)[-1])[0]
+				) + '.npy'
+			)
+			mel = tf.convert_to_tensor(mel)
+
+			# Expand dims if number if dims < 3 (I dont know why this
+			# is done in the original repo).
+			if len(mel.shape) < 3:
+				mel = tf.expand_dims(mel, 0)
+
+			if self.split:
+				frames_per_seg = math.ceil(
+					self.segment_size / self.hop_length
+				)
+
+				if audio.shape[0] >= self.segment_size:
+					# Subsample the audio if it is too large (larger 
+					# than segment_size) into a piece that is 
+					# segment_size.
+
+					# Note: The orignal implementation has mel.size(2)
+					# but I use mel.shape[1]. This is because I assume 
+					# in the original, the mel length dims are
+					# different. The README.md in the original repo
+					# references Tacotron 2, specificialy the NVIDIA
+					# repo implementation which is in pytorch. 
+					# Mel-spectrograms in pytorch are usually shaped
+					# (n_mel_channels, mel_len) while I usually have 
+					# them shaped (mel_len, n_mel_channels) in\
+					# tensorflow.
+					mel_start = random.randint(
+						0, mel.shape[1] - frames_per_seg - 1
+					)
+					mel = mel.numpy()[
+						:, mel_start:mel_start + frames_per_seg, :
+					]
+					audio = audio.numpy()[
+						:, mel_start * self.hop_length:(mel_start + frames_per_seg) *  self.hop_length
+					]
+				else:
+					# Pad the audio if it is too small (shorter than
+					# segment_size) to segment_size. Do the same for
+					# the mel-spectrogram.
+					mel = tf.pad(
+						mel, 
+						[[0, 0], [0, frames_per_seg - mel.shape[1]], [0, 0]],
+						"CONSTANT"
+					)
+					audio = tf.pad(
+						audio, 
+						[[0, self.segment_size - audio.shape[1]]], 
+						"CONSTANT"
+					)
+
+				# I added this to convert the audio back to tensorflow
+				# tensor.
+				audio = tf.convert_to_tensor(audio)
+
+		# Not sure what mel loss is when you consider the audio
+		# (perhaps it really matters when there is a difference between
+		# the mel-spectrograms which may only apply in fine-tuning).
+		mel_loss = self.stft_loss.mel_spectrogram(audio)
+
+		return (
+			tf.squeeze(mel) if mel.shape == 3 else mel,
+			tf.squeeze(audio),
+			filename,
+			tf.squeeze(mel_loss) if mel_loss.shape == 3 else mel_loss,
+		)
+
+
+	def generator(self):
+		# Extract the mel-spectrogram and audio data.
+		for idx in tqdm(range(len(self.audiopaths_and_text))):
+			yield self.__getitem__(idx)
+
+
+class DataOld:
 	def __init__(self, dataset_path, filelist_path, 
 			n_mel_channels=80, sampling_rate=22050, filter_length=1024,
 			hop_length=256, win_length=1024, mel_fmin=0.0,
@@ -69,6 +256,7 @@ class Data:
 		self.max_target_len = -1
 
 
+
 	def __getitem__(self, index):
 		# Separate filename and text
 		if self.n_speakers > 1:
@@ -78,10 +266,6 @@ class Data:
 
 		mel = self.get_mel(audiopath)
 
-		# return (
-		# 	text, mel, len(text), pitch, energy, speaker, attn_prior,
-		# 	audiopath
-		# )
 		return {"mel": mel}
 
 

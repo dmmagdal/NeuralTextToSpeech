@@ -17,11 +17,11 @@ class HParams:
 	lr_decay: float
 	seed: int
 
-	upsample_rates: list[int]
-	upsample_kernel_sizes: list[int]
+	upsample_rates: list#[int]
+	upsample_kernel_sizes: list#[int]
 	upsample_initial_channel: int
-	resblock_kernel_sizes: list[int]
-	resblock_dilation_sizes: list[list[int]]
+	resblock_kernel_sizes: list#[int]
+	resblock_dilation_sizes: list#[list[int]]
 
 	segment_size: int
 	num_mels: int   # n_mel_channels
@@ -34,7 +34,7 @@ class HParams:
 
 	fmin: int       # mel_fmin
 	fmax: int       # mel_fmax
-	fmax_for_loss: bool
+	fmax_for_loss: int # mel_fmax for mel_loss
 
 	num_workers: int
 
