@@ -5,11 +5,12 @@ import os
 import json
 import argparse
 import tensorflow as tf
+from data import Data
+from gan import HiFiGAN
+from hparams import HParams
 from model import Generator
 from model import MultiPeriodDiscriminator, MultiScaleDiscriminator
 from model import get_generator, get_mpd, get_msd
-from gan import HiFiGAN
-from hparams import HParams
 
 
 def main():
