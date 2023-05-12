@@ -1,10 +1,12 @@
 # train.py
 
 
+import math
 import os
 import json
 import argparse
 import tensorflow as tf
+from tensorflow import keras
 from data import Data
 from gan import HiFiGAN
 from hparams import HParams
@@ -34,23 +36,122 @@ def main():
 
 if __name__ == '__main__':
 	# Hard coded stuff (for testing).
-	config_file = "./config_v3.json"
+
+	# Load the hyperparameters from the config file.
+	config_file = "./config_v1.json"
+	config_file = "./config_v2.json"
+	# config_file = "./config_v3.json"
 	with open(config_file, "r") as f:
 		hparams = json.load(f)
 
 	hparams = HParams(**hparams)
 
+	frames_per_seg = math.ceil(
+		hparams.segment_size / hparams.hop_size
+	)
+
+	# Load the training and validation datasets.
+	train_filelist = './filelists/ljs_audio_text_train_v3.txt'
+	train_dataset = Data(
+		train_filelist,
+		segment_size=hparams.segment_size,
+		n_mel_channels=hparams.num_mels,
+		filter_length=hparams.n_fft,
+		hop_length=hparams.hop_size,
+		win_length=hparams.win_size,
+		sampling_rate=hparams.sampling_rate,
+		mel_fmin=hparams.fmin,
+		mel_fmax=hparams.fmax,
+		n_speakers=1, # Manually set because config.json does not have variable (& it isnt necessary for the vocoder)
+	)
+	train_data = tf.data.Dataset.from_generator( # Use in eager execution.
+		train_dataset.generator,
+		args=(),
+		# output_signature=(
+		# 	tf.TensorSpec(shape=(None, hparams.num_mels), dtype=tf.float32),	# mel
+		# 	tf.TensorSpec(shape=(None,), dtype=tf.float32),						# audio
+		# 	tf.TensorSpec(shape=(), dtype=tf.string),							# filename
+		# 	tf.TensorSpec(shape=(None, hparams.num_mels), dtype=tf.float32),	# mel_loss
+		# )
+		output_signature=(
+			tf.TensorSpec(shape=(frames_per_seg, hparams.num_mels), dtype=tf.float32),	# mel
+			tf.TensorSpec(shape=(hparams.segment_size,), dtype=tf.float32),				# audio
+			tf.TensorSpec(shape=(), dtype=tf.string),									# filename
+			tf.TensorSpec(shape=(frames_per_seg, hparams.num_mels), dtype=tf.float32),	# mel_loss
+		)
+	)
+
+	valid_filelist = './filelists/ljs_audio_text_val.txt'
+	valid_dataset = Data(
+		valid_filelist,
+		segment_size=hparams.segment_size,
+		n_mel_channels=hparams.num_mels,
+		filter_length=hparams.n_fft,
+		hop_length=hparams.hop_size,
+		win_length=hparams.win_size,
+		sampling_rate=hparams.sampling_rate,
+		mel_fmin=hparams.fmin,
+		mel_fmax=hparams.fmax,
+		split=False,
+		shuffle=False,
+		n_speakers=1, # Manually set because config.json does not have variable (& it isnt necessary for the vocoder)
+	)
+	valid_data = tf.data.Dataset.from_generator( # Use in eager execution.
+		valid_dataset.generator,
+		args=(),
+		# output_signature=(
+		# 	tf.TensorSpec(shape=(None, hparams.num_mels), dtype=tf.float32),	# mel
+		# 	tf.TensorSpec(shape=(None,), dtype=tf.float32),						# audio
+		# 	tf.TensorSpec(shape=(), dtype=tf.string),							# filename
+		# 	tf.TensorSpec(shape=(None, hparams.num_mels), dtype=tf.float32),	# mel_loss
+		# )
+		output_signature=(
+			tf.TensorSpec(shape=(math.ceil(hparams.segment_size / hparams.hop_size), hparams.num_mels), dtype=tf.float32),	# mel
+			tf.TensorSpec(shape=(hparams.segment_size,), dtype=tf.float32),						# audio
+			tf.TensorSpec(shape=(), dtype=tf.string),							# filename
+			tf.TensorSpec(shape=(math.ceil(hparams.segment_size / hparams.hop_size), hparams.num_mels), dtype=tf.float32),	# mel_loss
+		)
+	)
+
+	train_data = train_data.batch(hparams.batch_size, drop_remainder=True).prefetch(tf.data.AUTOTUNE)
+	valid_data = valid_data.batch(hparams.batch_size, drop_remainder=True).prefetch(tf.data.AUTOTUNE)
+
+	# Uncomment for eager execution debugging.
+	# print(list(train_data.as_numpy_iterator())[0])
+	# print(list(valid_data.as_numpy_iterator())[0])
+
+	# Initialize the models.
 	generator = Generator(hparams)
 	mpd = MultiPeriodDiscriminator()
 	msd = MultiScaleDiscriminator()
 
-	gen = get_generator((None, hparams.num_mels), hparams)
-	mpd2 = get_mpd((None,), (None,))
-	msd2 = get_msd((None,), (None,))
-	gen.summary()
-	mpd2.summary()
-	msd2.summary()
+	# gen = get_generator((None, hparams.num_mels), hparams)
+	# mpd2 = get_mpd((None,), (None,))
+	# msd2 = get_msd((None,), (None,))
+	# gen.summary()
+	# mpd2.summary()
+	# msd2.summary()
 
 	gan = HiFiGAN(hparams, generator, mpd, msd)
+
+	# Initialize optimizers.
+	optim_g = keras.optimizers.Adam(
+		learning_rate=hparams.learning_rate,
+		beta_1=hparams.adam_b1, beta_2=hparams.adam_b2
+	)
+	optim_mpd = keras.optimizers.Adam(
+		learning_rate=hparams.learning_rate,
+		beta_1=hparams.adam_b1, beta_2=hparams.adam_b2
+	)
+	optim_msd = keras.optimizers.Adam(
+		learning_rate=hparams.learning_rate,
+		beta_1=hparams.adam_b1, beta_2=hparams.adam_b2
+	)
+
+	# Compile the model.
+	gan.compile(optim_g, optim_mpd, optim_msd, )#run_eagerly=True)
+
+	# Train the model.
+	gan.fit(train_data, epochs=1)
 
 	# main()

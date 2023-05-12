@@ -9,35 +9,15 @@ from losses import discriminator_loss, feature_loss, generator_loss
 
 
 class HiFiGAN(keras.Model):
-	def __init__(self, hparams, generator, mpd, msd):
-		super(HiFiGAN, self).__init__()
-		# Hyperparameters
+	def __init__(self, hparams, generator, mpd, msd, **kwargs):
+		super(HiFiGAN, self).__init__(**kwargs)
+		# Hparams.
 		self.hparams = hparams
 
 		# Models.
 		self.generator = generator
 		self.mpd = mpd
 		self.msd = msd
-
-		# Optimizers
-		self.optim_g = keras.optimizers.Adam(
-			learning_rate=hparams.learning_rate,
-			beta_1=hparams.adam_b1, beta_2=hparams.adam_b2
-		)
-		self.optim_mpd = keras.optimizers.Adam(
-			learning_rate=hparams.learning_rate,
-			beta_1=hparams.adam_b1, beta_2=hparams.adam_b2
-		)
-		self.optim_mpd = keras.optimizers.Adam(
-			learning_rate=hparams.learning_rate,
-			beta_1=hparams.adam_b1, beta_2=hparams.adam_b2
-		)
-
-		# Losses.
-		self.disc_loss = discriminator_loss
-		self.gen_loss = generator_loss
-		self.feature_loss = feature_loss
-		self.l1_loss = keras.losses.MeanAbsoluteError()
 
 		# STFT.
 		self.stft = STFT(
@@ -47,10 +27,6 @@ class HiFiGAN(keras.Model):
 			sampling_rate=hparams.sampling_rate,
 			mel_fmin=hparams.fmin, mel_fmax=hparams.fmax
 		)
-
-
-	def call(self, audio):
-		return tf.cast(self.generator(audio), dtype=tf.int16)
 
 
 	def train_step(self, batch):
@@ -112,22 +88,47 @@ class HiFiGAN(keras.Model):
 		)
 
 		# Apply Gradients.
-		self.generator.optimizer.apply_gradients(
+		# self.generator.optimizer.apply_gradients( # Test later
+		# 	zip(gen_gradients, self.generator.trainable_variables)
+		# )
+		# self.mpd.optimizer.apply_gradients(
+		# 	zip(mpd_gradients, self.mpd.trainable_variables)
+		# )
+		# self.msd.optimizer.apply_gradients(
+		# 	zip(msd_gradients, self.msd.trainable_variables)
+		# )
+		self.optim_g.apply_gradients( # Similar to MelGAN example
 			zip(gen_gradients, self.generator.trainable_variables)
 		)
-		self.mpd.optimizer.apply_gradients(
+		self.optim_mpd.apply_gradients(
 			zip(mpd_gradients, self.mpd.trainable_variables)
 		)
-		self.msd.optimizer.apply_gradients(
+		self.optim_msd.apply_gradients(
 			zip(msd_gradients, self.msd.trainable_variables)
 		)
 
-		pass
+		# Update metrics/trackers.
+		self.gen_loss_tracker.update_state(loss_gen_all)
+		self.disc_loss_tracker.update_state(loss_disc_all)
+		self.mel_loss_tracker.update_state(mel_error)
+
+		return {
+			"gen_loss": self.gen_loss_tracker.result(),
+			"disc_loss": self.disc_loss_tracker.result(), 
+			"mel_Loss": self.mel_loss_tracker.result(),
+		}
 
 	
 	def test_step(self, batch):
 		x, y, _, y_mel = batch
 		# val_error = 0
+
+		# Dynamic pad.
+		# max_mel_len = tf.shape(x)
+		# print(max_mel_len)
+		# print(tf.shape(y))
+		# print(tf.shape(y_mel))
+		# exit()
 
 		# Compute predictions.
 		y_g_hat = self.generator(x)
@@ -139,16 +140,39 @@ class HiFiGAN(keras.Model):
 
 		# Update the metrics.
 		# self.compiled_metrics.update_state(y, y_pred)
+		self.val_loss_tracker.update(val_error)
 
 		# Return a dict mapping metric names to current value.
 		# Note that it will include the loss (tracked in self.metrics).
 		# return {m.name: m.result() for m in self.metrics}
+		return {
+			"val_mel_loss": self.val_loss_tracker.result(),
+		}
 
 
-	def compile(self):
-		self.generator.compile(optimizer=self.optim_g)
-		self.mpd.compile(optimizer=self.optim_d)
-		self.msd.compile(optimizer=self.optim_d)
+
+	def compile(self, optim_g, optim_mpd, optim_msd, **kwargs):
+		super().compile(**kwargs)
+
+		# Losses.
+		self.disc_loss = discriminator_loss
+		self.gen_loss = generator_loss
+		self.feature_loss = feature_loss
+		self.l1_loss = keras.losses.MeanAbsoluteError()
+
+		# Optimizers.
+		# self.generator.compile(optimizer=optim_g) # Test later
+		# self.mpd.compile(optimizer=optim_mpd)
+		# self.msd.compile(optimizer=optim_msd)
+		self.optim_g = optim_g # Similar to MelGAN example
+		self.optim_mpd = optim_mpd
+		self.optim_msd = optim_msd
+
+		# Metrics/trackers.
+		self.gen_loss_tracker = keras.metrics.Mean(name="gen_loss")
+		self.disc_loss_tracker = keras.metrics.Mean(name="disc_loss")
+		self.mel_loss_tracker = keras.metrics.Mean(name="mel_loss")
+		self.val_loss_tracker = keras.metrics.Mean(name="val_mel_loss")
 
 
 	def summary(self):

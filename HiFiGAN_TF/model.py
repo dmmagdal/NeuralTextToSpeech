@@ -4,6 +4,7 @@
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
+import tensorflow_addons as tfa
 from utils import get_padding
 from nn_utils import WeightNorm, SpectralNorm
 
@@ -20,46 +21,85 @@ class ResBlock1(layers.Layer):
 		super(ResBlock1, self).__init__()
 		self.hparams = hparams
 		self.convs1 = [
-			WeightNorm(
+			# WeightNorm(
+			# 	layers.Conv1D(
+			# 		channels, kernel_size, strides=1, 
+			# 		dilation_rate=dilation[0],
+			# 		padding=get_padding(kernel_size, dilation[0])
+			# 	)
+			# ),
+			# WeightNorm(
+			# 	layers.Conv1D(
+			# 		channels, kernel_size, strides=1, 
+			# 		dilation_rate=dilation[1],
+			# 		padding=get_padding(kernel_size, dilation[1])
+			# 	)
+			# ),
+			# WeightNorm(
+			# 	layers.Conv1D(
+			# 		channels, kernel_size, strides=1, 
+			# 		dilation_rate=dilation[2],
+			# 		padding=get_padding(kernel_size, dilation[2])
+			# 	)
+			# ),
+			tfa.layers.WeightNormalization(
 				layers.Conv1D(
 					channels, kernel_size, strides=1, 
 					dilation_rate=dilation[0],
 					padding=get_padding(kernel_size, dilation[0])
-				)
+				), data_init=False
 			),
-			WeightNorm(
+			tfa.layers.WeightNormalization(
 				layers.Conv1D(
 					channels, kernel_size, strides=1, 
 					dilation_rate=dilation[1],
 					padding=get_padding(kernel_size, dilation[1])
-				)
+				), data_init=False
 			),
-			WeightNorm(
+			tfa.layers.WeightNormalization(
 				layers.Conv1D(
 					channels, kernel_size, strides=1, 
 					dilation_rate=dilation[2],
 					padding=get_padding(kernel_size, dilation[2])
-				)
+				), data_init=False
 			),
 		]
 		self.convs2 = [
-			WeightNorm(
+			# WeightNorm(
+			# 	layers.Conv1D(
+			# 		channels, kernel_size, strides=1, dilation_rate=1,
+			# 		padding=get_padding(kernel_size, 1)
+			# 	)
+			# ),
+			# WeightNorm(
+			# 	layers.Conv1D(
+			# 		channels, kernel_size, strides=1, dilation_rate=1,
+			# 		padding=get_padding(kernel_size, 1)
+			# 	)
+			# ),
+			# WeightNorm(
+			# 	layers.Conv1D(
+			# 		channels, kernel_size, strides=1, dilation_rate=1,
+			# 		padding=get_padding(kernel_size, 1)
+			# 	)
+			# ),
+			tfa.layers.WeightNormalization(
 				layers.Conv1D(
 					channels, kernel_size, strides=1, dilation_rate=1,
 					padding=get_padding(kernel_size, 1)
-				)
+				), data_init=False
 			),
-			WeightNorm(
+			tfa.layers.WeightNormalization(
 				layers.Conv1D(
 					channels, kernel_size, strides=1, dilation_rate=1,
 					padding=get_padding(kernel_size, 1)
-				)
+				), data_init=False
 			),
-			WeightNorm(
+			tfa.layers.WeightNormalization(
 				layers.Conv1D(
 					channels, kernel_size, strides=1, dilation_rate=1,
 					padding=get_padding(kernel_size, 1)
-				)
+				), data_init=False
 			),
 		]
 		self.convs1LReLU = layers.LeakyReLU(LRELU_SLOPE)
@@ -82,29 +122,45 @@ class ResBlock2(layers.Layer):
 		super(ResBlock2, self).__init__()
 		self.hparams = hparams
 		self.convs = [
-			WeightNorm(
+			# WeightNorm(
+			# 	layers.Conv1D(
+			# 		channels, kernel_size, strides=1, 
+			# 		dilation_rate=dilation[0],
+			# 		padding=get_padding(kernel_size, dilation[0])
+			# 	)
+			# ),
+			# WeightNorm(
+			# 	layers.Conv1D(
+			# 		channels, kernel_size, strides=1, 
+			# 		dilation_rate=dilation[1],
+			# 		padding=get_padding(kernel_size, dilation[1])
+			# 	)
+			# ),
+			tfa.layers.WeightNormalization(
 				layers.Conv1D(
 					channels, kernel_size, strides=1, 
 					dilation_rate=dilation[0],
 					padding=get_padding(kernel_size, dilation[0])
-				)
+				), data_init=False
 			),
-			WeightNorm(
+			tfa.layers.WeightNormalization(
 				layers.Conv1D(
 					channels, kernel_size, strides=1, 
 					dilation_rate=dilation[1],
 					padding=get_padding(kernel_size, dilation[1])
-				)
+				), data_init=False
 			),
 		]
 		self.convLReLU = layers.LeakyReLU(LRELU_SLOPE)
 
 
-	def call(self, x, training=None):
+	# def call(self, x, training=None):
+	def call(self, x):
 		for c in self.convs:
 			# xt = layers.LeakyReLU(LRELU_SLOPE)(x) # Original
 			xt = self.convLReLU(x)
-			xt = c(xt, training)
+			# xt = c(xt, training)
+			xt = c(xt)
 			x = xt + x
 		return x
 
@@ -116,21 +172,32 @@ class Generator(keras.Model):
 		self.hparams = hparams
 		self.num_kernels = len(hparams.resblock_kernel_sizes)
 		self.num_upsamples = len(hparams.upsample_rates)
-		self.conv_pre = WeightNorm(
+		# self.conv_pre = WeightNorm(
+		# 	layers.Conv1D(
+		# 		hparams.upsample_initial_channel, 7, 1, #padding=3
+		# 	)
+		# )
+		self.conv_pre = tfa.layers.WeightNormalization(
 			layers.Conv1D(
 				hparams.upsample_initial_channel, 7, 1, #padding=3
-			)
+			), data_init=False
 		)
 		resblock = ResBlock1 if hparams.resblock == '1' else ResBlock2
 
 		self.ups = []
 		for i, (u, k) in enumerate(zip(hparams.upsample_rates, hparams.upsample_kernel_sizes)):
 			self.ups.append(
-				WeightNorm(
+				# WeightNorm(
+				# 	layers.Conv1DTranspose(
+				# 		hparams.upsample_initial_channel // (2 ** (i + 1)),
+				# 		kernel_size=k, strides=u, #padding=(k - u) // 2
+				# 	)
+				# )
+				tfa.layers.WeightNormalization(
 					layers.Conv1DTranspose(
 						hparams.upsample_initial_channel // (2 ** (i + 1)),
 						kernel_size=k, strides=u, #padding=(k - u) // 2
-					)
+					), data_init=False
 				)
 			)
 
@@ -140,32 +207,45 @@ class Generator(keras.Model):
 			for j, (k, d) in enumerate(zip(hparams.resblock_kernel_sizes, hparams.resblock_dilation_sizes)):
 				self.resblocks.append(resblock(hparams, ch, k, d))
 
-		self.conv_post = WeightNorm(
+		# self.conv_post = WeightNorm(
+		# 	layers.Conv1D(
+		# 		1, kernel_size=7, strides=1, #padding=3
+		# 	)
+		# )
+		self.conv_post = tfa.layers.WeightNormalization(
 			layers.Conv1D(
 				1, kernel_size=7, strides=1, #padding=3
-			)
+			), data_init=False
 		)
 
 		self.upLeakyReLU = layers.LeakyReLU(LRELU_SLOPE)
 		self.leakyReLU = layers.LeakyReLU()
 
 	
-	def call(self, x, training=None):
-		x = self.conv_pre(x, training)
+	# def call(self, x, training=None):
+	def call(self, x):
+		# x = self.conv_pre(x, training)
+		x = self.conv_pre(x)
 		for i in range(self.num_upsamples):
 			# x = layers.LeakyReLU(LRELU_SLOPE)(x) # Original
 			x = self.upLeakyReLU(x)
-			x = self.ups[i](x, training)
+			# x = self.ups[i](x, training)
+			# x = self.ups[i](x, training)
+			x = self.ups[i](x)
+			x = self.ups[i](x)
 			xs = None
 			for j in range(self.num_kernels):
 				if xs is None:
-					xs = self.resblocks[i * self.num_kernels + j](x, training)
+					# xs = self.resblocks[i * self.num_kernels + j](x, training)
+					xs = self.resblocks[i * self.num_kernels + j](x)
 				else:
-					xs += self.resblocks[i * self.num_kernels + j](x, training)
+					# xs += self.resblocks[i * self.num_kernels + j](x, training)
+					xs += self.resblocks[i * self.num_kernels + j](x)
 			x = xs / self.num_kernels
 		# x = layers.LeakyReLU()(x) # Original
 		x = self.leakyReLU(x)
-		x = self.conv_post(x, training)
+		# x = self.conv_post(x, training)
+		x = self.conv_post(x)
 		x = tf.math.tanh(x)
 
 		return x
@@ -176,7 +256,8 @@ class DiscriminatorP(layers.Layer):
 		super(DiscriminatorP, self).__init__()
 		self.period = period
 		# norm_f = weight_norm if use_spectral_norm == False else spectral_norm # Need to figure out spectral & weight norm functions.
-		norm_f = WeightNorm if use_spectral_norm else SpectralNorm
+		# norm_f = WeightNorm if use_spectral_norm == False else SpectralNorm
+		norm_f = tfa.layers.WeightNormalization if use_spectral_norm == False else tfa.layers.SpectralNormalization
 		self.convs = [
 			norm_f(
 				layers.Conv2D(
@@ -208,7 +289,8 @@ class DiscriminatorP(layers.Layer):
 		self.flatten = layers.Flatten()
 
 
-	def call(self, x, training=None):
+	# def call(self, x, training=None):
+	def call(self, x):
 		fmap = []
 
 		# Ignore training argument to make sure it skips being called/
@@ -231,11 +313,13 @@ class DiscriminatorP(layers.Layer):
 		x = tf.reshape(x, [b, t // self.period, self.period, c])
 
 		for l in self.convs:
-			x = l(x, training)
+			# x = l(x, training)
+			x = l(x)
 			# x = layers.LeakyReLU(LRELU_SLOPE)(x) # Original
 			x = self.convsLeakyReLU(x)
 			fmap.append(x)
-		x = self.conv_post(x, training)
+		# x = self.conv_post(x, training)
+		x = self.conv_post(x)
 		fmap.append(x)
 		# x = torch.flatten(x, 1, -1)
 		x = self.flatten(x)
@@ -257,15 +341,18 @@ class MultiPeriodDiscriminator(keras.Model):
 
 
 	# def call(self, y, y_hat, training=None):
-	def call(self, x, training=None):
+	# def call(self, x, training=None):
+	def call(self, x):
 		y, y_hat = x
 		y_d_rs = []
 		y_d_gs = []
 		fmap_rs = []
 		fmap_gs = []
 		for _, d in enumerate(self.discriminators):
-			y_d_r, fmap_r = d(y, training)
-			y_d_g, fmap_g = d(y_hat, training)
+			# y_d_r, fmap_r = d(y, training)
+			# y_d_g, fmap_g = d(y_hat, training)
+			y_d_r, fmap_r = d(y)
+			y_d_g, fmap_g = d(y_hat)
 			y_d_rs.append(y_d_r)
 			fmap_rs.append(fmap_r)
 			y_d_gs.append(y_d_g)
@@ -277,7 +364,8 @@ class MultiPeriodDiscriminator(keras.Model):
 class DiscriminatorS(layers.Layer):
 	def __init__(self, use_spectral_norm=False):
 		super(DiscriminatorS, self).__init__()
-		norm_f = WeightNorm if use_spectral_norm else SpectralNorm
+		# norm_f = WeightNorm if use_spectral_norm == False else SpectralNorm
+		norm_f = tfa.layers.WeightNormalization if use_spectral_norm == False else tfa.layers.SpectralNormalization
 		self.convs = [
 			norm_f(
 				layers.Conv1D(
@@ -329,7 +417,8 @@ class DiscriminatorS(layers.Layer):
 		self.flatten = layers.Flatten()
 
 
-	def call(self, x, training=None):
+	# def call(self, x, training=None):
+	def call(self, x):
 		fmap = []
 
 		# Ignore training argument to make sure it skips being called/
@@ -341,11 +430,13 @@ class DiscriminatorS(layers.Layer):
 		# models#privileged_training_argument_in_the_call_method
 
 		for l in self.convs:
-			x = l(x, training)
+			# x = l(x, training)
+			x = l(x)
 			# x = layers.LeakyReLU(LRELU_SLOPE)(x) # Original
 			x = self.convsLeakyReLU(x)
 			fmap.append(x)
-		x = self.conv_post(x, training)
+		# x = self.conv_post(x, training)
+		x = self.conv_post(x)
 		fmap.append(x)
 		# x = torch.flatten(x, 1, -1)
 		x = self.flatten(x)
@@ -373,7 +464,8 @@ class MultiScaleDiscriminator(keras.Model):
 
 
 	# def call(self, y, y_hat, training=None):
-	def call(self, x, training=None):
+	# def call(self, x, training=None):
+	def call(self, x):
 		y, y_hat = x
 		y_d_rs = []
 		y_d_gs = []
@@ -383,8 +475,10 @@ class MultiScaleDiscriminator(keras.Model):
 			if i != 0:
 				y = self.mean_pools[i - 1](y)
 				y_hat = self.mean_pools[i - 1](y_hat)
-			y_d_r, fmap_r = d(y, training)
-			y_d_g, fmap_g = d(y_hat, training)
+			# y_d_r, fmap_r = d(y, training)
+			# y_d_g, fmap_g = d(y_hat, training)
+			y_d_r, fmap_r = d(y)
+			y_d_g, fmap_g = d(y_hat)
 			y_d_rs.append(y_d_r)
 			fmap_rs.append(fmap_r)
 			y_d_gs.append(y_d_g)
