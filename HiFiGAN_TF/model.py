@@ -7,7 +7,7 @@ from tensorflow.keras import layers
 import tensorflow_addons as tfa
 from tensorflow_addons.layers import WeightNormalization
 from tensorflow_addons.layers import SpectralNormalization
-from utils import get_padding, get_padding_int
+from utils import get_padding
 from nn_utils import WeightNorm, SpectralNorm
 
 
