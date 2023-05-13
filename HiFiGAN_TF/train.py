@@ -15,6 +15,10 @@ from model import MultiPeriodDiscriminator, MultiScaleDiscriminator
 from model import get_generator, get_mpd, get_msd
 
 
+# policy = tf.keras.mixed_precision.experimental.Policy('mixed_float16')
+# tf.keras.mixed_precision.experimental.set_policy(policy)
+
+
 def main():
 	parser = argparse.ArgumentParser()
 	# parser.add_argument('--group_name', default=None)                                     # Not needed/used 
@@ -30,17 +34,13 @@ def main():
 	# parser.add_argument('--summary_interval', default=100, type=int)                      # Not needed/used 
 	# parser.add_argument('--validation_interval', default=1000, type=int)                  # Not needed/used 
 	parser.add_argument('--fine_tuning', default=False, type=bool)
-	
 
-
-
-if __name__ == '__main__':
 	# Hard coded stuff (for testing).
 
 	# Load the hyperparameters from the config file.
 	config_file = "./config_v1.json"
 	config_file = "./config_v2.json"
-	# config_file = "./config_v3.json"
+	config_file = "./config_v3.json"
 	with open(config_file, "r") as f:
 		hparams = json.load(f)
 
@@ -67,18 +67,18 @@ if __name__ == '__main__':
 	train_data = tf.data.Dataset.from_generator( # Use in eager execution.
 		train_dataset.generator,
 		args=(),
-		# output_signature=(
-		# 	tf.TensorSpec(shape=(None, hparams.num_mels), dtype=tf.float32),	# mel
-		# 	tf.TensorSpec(shape=(None,), dtype=tf.float32),						# audio
-		# 	tf.TensorSpec(shape=(), dtype=tf.string),							# filename
-		# 	tf.TensorSpec(shape=(None, hparams.num_mels), dtype=tf.float32),	# mel_loss
-		# )
 		output_signature=(
-			tf.TensorSpec(shape=(frames_per_seg, hparams.num_mels), dtype=tf.float32),	# mel
-			tf.TensorSpec(shape=(hparams.segment_size,), dtype=tf.float32),				# audio
-			tf.TensorSpec(shape=(), dtype=tf.string),									# filename
-			tf.TensorSpec(shape=(frames_per_seg, hparams.num_mels), dtype=tf.float32),	# mel_loss
+			tf.TensorSpec(shape=(None, hparams.num_mels), dtype=tf.float32),	# mel
+			tf.TensorSpec(shape=(None,), dtype=tf.float32),						# audio
+			tf.TensorSpec(shape=(), dtype=tf.string),							# filename
+			tf.TensorSpec(shape=(None, hparams.num_mels), dtype=tf.float32),	# mel_loss
 		)
+		# output_signature=(
+		# 	tf.TensorSpec(shape=(frames_per_seg, hparams.num_mels), dtype=tf.float32),	# mel
+		# 	tf.TensorSpec(shape=(hparams.segment_size,), dtype=tf.float32),				# audio
+		# 	tf.TensorSpec(shape=(), dtype=tf.string),									# filename
+		# 	tf.TensorSpec(shape=(frames_per_seg, hparams.num_mels), dtype=tf.float32),	# mel_loss
+		# )
 	)
 
 	valid_filelist = './filelists/ljs_audio_text_val.txt'
@@ -99,22 +99,34 @@ if __name__ == '__main__':
 	valid_data = tf.data.Dataset.from_generator( # Use in eager execution.
 		valid_dataset.generator,
 		args=(),
-		# output_signature=(
-		# 	tf.TensorSpec(shape=(None, hparams.num_mels), dtype=tf.float32),	# mel
-		# 	tf.TensorSpec(shape=(None,), dtype=tf.float32),						# audio
-		# 	tf.TensorSpec(shape=(), dtype=tf.string),							# filename
-		# 	tf.TensorSpec(shape=(None, hparams.num_mels), dtype=tf.float32),	# mel_loss
-		# )
 		output_signature=(
-			tf.TensorSpec(shape=(math.ceil(hparams.segment_size / hparams.hop_size), hparams.num_mels), dtype=tf.float32),	# mel
-			tf.TensorSpec(shape=(hparams.segment_size,), dtype=tf.float32),						# audio
+			tf.TensorSpec(shape=(None, hparams.num_mels), dtype=tf.float32),	# mel
+			tf.TensorSpec(shape=(None,), dtype=tf.float32),						# audio
 			tf.TensorSpec(shape=(), dtype=tf.string),							# filename
-			tf.TensorSpec(shape=(math.ceil(hparams.segment_size / hparams.hop_size), hparams.num_mels), dtype=tf.float32),	# mel_loss
+			tf.TensorSpec(shape=(None, hparams.num_mels), dtype=tf.float32),	# mel_loss
 		)
+		# output_signature=(
+		# 	tf.TensorSpec(shape=(frames_per_seg, hparams.num_mels), dtype=tf.float32),	# mel
+		# 	tf.TensorSpec(shape=(hparams.segment_size,), dtype=tf.float32),						# audio
+		# 	tf.TensorSpec(shape=(), dtype=tf.string),							# filename
+		# 	tf.TensorSpec(shape=(frames_per_seg, hparams.num_mels), dtype=tf.float32),	# mel_loss
+		# )
 	)
 
-	train_data = train_data.batch(hparams.batch_size, drop_remainder=True).prefetch(tf.data.AUTOTUNE)
-	valid_data = valid_data.batch(hparams.batch_size, drop_remainder=True).prefetch(tf.data.AUTOTUNE)
+	# For mixed precision training.
+	# train_data = train_data.map(
+	# 	lambda x, y, f, z: (tf.cast(x, policy.compute_dtype), tf.cast(y, policy.compute_dtype), f, tf.cast(z, policy.compute_dtype))
+	# )
+	# valid_data = valid_data.map(
+	# 	lambda x, y, f, z: (tf.cast(x, policy.compute_dtype), tf.cast(y, policy.compute_dtype), f, tf.cast(z, policy.compute_dtype))
+	# )
+
+	train_data = train_data.batch(
+		hparams.batch_size, drop_remainder=True
+	)
+	train_data = train_data.prefetch(tf.data.AUTOTUNE)
+	valid_data = valid_data.batch(1, drop_remainder=True) # Original train.py specifies batch_size of 1.
+	valid_data = valid_data.prefetch(tf.data.AUTOTUNE)
 
 	# Uncomment for eager execution debugging.
 	# print(list(train_data.as_numpy_iterator())[0])
@@ -149,9 +161,15 @@ if __name__ == '__main__':
 	)
 
 	# Compile the model.
-	gan.compile(optim_g, optim_mpd, optim_msd, )#run_eagerly=True)
+	gan.compile(optim_g, optim_mpd, optim_msd, run_eagerly=True)
 
 	# Train the model.
-	gan.fit(train_data, epochs=1)
+	gan.fit(train_data, validation_data=valid_data, epochs=1)
+	
+	# Exit the program.
+	exit()
 
-	# main()
+
+if __name__ == '__main__':
+
+	main()

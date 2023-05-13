@@ -121,7 +121,7 @@ class Data:
 					# than segment_size) into a piece that is
 					# segment_size.
 					max_audio_start = audio.shape[1] - self.segment_size
-					audio_start = random.randint(00, max_audio_start)
+					audio_start = random.randint(0, max_audio_start)
 					audio = audio.numpy()[
 						:, audio_start:audio_start + self.segment_size
 					]

@@ -37,7 +37,19 @@ class HiFiGAN(keras.Model):
 		with tf.GradientTape() as g_tape, tf.GradientTape() as d_tape:
 			# Generator.
 			y_g_hat = self.generator(x, training=True)
-			y_g_hat_mel = self.stft.mel_spectrogram(y_g_hat)
+
+			# Added pad to the output from generator. This is in case
+			# the output tensor is too short compared to the training
+			# segment.
+			audio_len_diff = tf.shape(y)[1] - tf.shape(y_g_hat)[1]
+			y_g_hat = tf.pad(y_g_hat, [[0, 0], [0, audio_len_diff], [0, 0]], "CONSTANT")
+			
+			# y_g_hat_mel = self.stft.mel_spectrogram(tf.squeeze(y_g_hat, -1)) # Roughly orignal
+			stack = tf.unstack(tf.squeeze(y_g_hat, -1))
+			mel_stack = []
+			for i in range(len(stack)):
+				mel_stack.append(self.stft.mel_spectrogram(stack[i]))
+			y_g_hat_mel = tf.stack(mel_stack)
 
 			# MPD.
 			y_df_hat_r, y_df_hat_g, _, _ = self.mpd(
@@ -155,8 +167,8 @@ class HiFiGAN(keras.Model):
 		super().compile(**kwargs)
 
 		# Losses.
-		self.disc_loss = discriminator_loss
-		self.gen_loss = generator_loss
+		self.discriminator_loss = discriminator_loss
+		self.generator_loss = generator_loss
 		self.feature_loss = feature_loss
 		self.l1_loss = keras.losses.MeanAbsoluteError()
 

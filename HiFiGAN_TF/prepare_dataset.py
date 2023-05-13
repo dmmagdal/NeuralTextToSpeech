@@ -119,14 +119,14 @@ def main():
 	# 		tf.TensorSpec(shape=(), dtype=tf.int64),				# speaker id
 	# 	)
 	# )
-	data_old = tf.data.Dataset.from_generator( # Use in eager execution.
-		dataset_old.generator,
-		args=(),
-		output_signature=(
-			tf.TensorSpec(shape=(None, hparams.num_mels), dtype=tf.float32),	# mel
-			tf.TensorSpec(shape=(), dtype=tf.int64),							# output_lengths
-		)
-	)
+	# data_old = tf.data.Dataset.from_generator( # Use in eager execution.
+	# 	dataset_old.generator,
+	# 	args=(),
+	# 	output_signature=(
+	# 		tf.TensorSpec(shape=(None, hparams.num_mels), dtype=tf.float32),	# mel
+	# 		tf.TensorSpec(shape=(), dtype=tf.int64),							# output_lengths
+	# 	)
+	# )
 	data = tf.data.Dataset.from_generator( # Use in eager execution.
 		dataset.generator,
 		args=(),
@@ -137,8 +137,13 @@ def main():
 			tf.TensorSpec(shape=(None, hparams.num_mels), dtype=tf.float32),	# mel_loss
 		)
 	)
-	print(list(data_old.as_numpy_iterator())[0])
+	# print(list(data_old.as_numpy_iterator())[0])
 	print(list(data.as_numpy_iterator())[0])
+	x = list(data.as_numpy_iterator())[:3]
+	for i in range(len(x)):
+		y = x[i]
+		print(f"{tf.shape(y[0])}, {tf.shape(y[1])}, {tf.shape(y[2])}, {tf.shape(y[3])}")
+	# print(json.dumps(list(data.as_numpy_iterator())[:3]))
 
 	# Exit the program.
 	exit(0)
