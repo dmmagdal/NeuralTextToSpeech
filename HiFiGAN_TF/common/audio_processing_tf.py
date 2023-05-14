@@ -62,17 +62,25 @@ class STFT:
 	# Convert a wav signal to mel spectrogram.
 	# @param: x, TF.Tensor (of shape (wav_length,) or (wav_length, 1))
 	#	that is the input signal from the wav file.
+	# @param: check_shape, bool (default True) that determines if the
+	#	input tensor should have it's shape checked. 
 	# @return: returns a TF.Tensor of shape 
 	#	(some_length, n_mel_channels) that is the mel spectrogram of
 	#	the input signal.
-	def mel_spectrogram(self, x):
-		# Adjust the shape of the signal if it is of shape
-		# (wav_length, 1).
-		if len(tf.shape(x)) == 2:
-			# x = tf.squeeze(x, axis=-1)
-			x = tf.squeeze(x, axis=0)
+	def mel_spectrogram(self, x, check_shape=True):
+		# Determine if the check shape of the input tensor. This was
+		# added to allow for the model (which also calls this
+		# function, not just the data loader) to skip the checks
+		# because graph execution doesnt like checking the shapes as
+		# part of a python conditional.
+		if check_shape:
+			# Adjust the shape of the signal if it is of shape
+			# (wav_length, 1).
+			if len(tf.shape(x)) == 2:
+				# x = tf.squeeze(x, axis=-1)
+				x = tf.squeeze(x, axis=0)
 
-		assert len(tf.shape(x)) == 1, "Invalid signal shape {}, expected (wav_length,)".format(tf.shape(x))
+			assert len(tf.shape(x)) == 1, "Invalid signal shape {}, expected (wav_length,)".format(tf.shape(x))
 
 		# Convert signal to spectrogram with STFT function.
 		spectrogram = tf.signal.stft(

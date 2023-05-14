@@ -48,7 +48,7 @@ class HiFiGAN(keras.Model):
 			stack = tf.unstack(tf.squeeze(y_g_hat, -1))
 			mel_stack = []
 			for i in range(len(stack)):
-				mel_stack.append(self.stft.mel_spectrogram(stack[i]))
+				mel_stack.append(self.stft.mel_spectrogram(stack[i], False))
 			y_g_hat_mel = tf.stack(mel_stack)
 
 			# MPD.
@@ -144,7 +144,7 @@ class HiFiGAN(keras.Model):
 
 		# Compute predictions.
 		y_g_hat = self.generator(x)
-		y_g_hat_mel = self.stft.mel_spectrogram(y_g_hat)
+		y_g_hat_mel = self.stft.mel_spectrogram(y_g_hat, False)
 
 		# Updates the metrics tracking the loss.
 		# self.compiled_loss(y, y_pred, regularization_losses=self.losses)

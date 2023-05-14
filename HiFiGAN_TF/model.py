@@ -15,7 +15,6 @@ LRELU_SLOPE = 0.1
 
 # TODO: 
 # 1) Add weight initialization to key layers
-# 2) Figure out padding
 
 
 class ResBlock1(layers.Layer):
@@ -23,27 +22,6 @@ class ResBlock1(layers.Layer):
 		super(ResBlock1, self).__init__()
 		self.hparams = hparams
 		self.convs1 = [
-			# WeightNorm(
-			# 	layers.Conv1D(
-			# 		channels, kernel_size, strides=1, 
-			# 		dilation_rate=dilation[0],
-			# 		padding=get_padding(kernel_size, dilation[0])
-			# 	)
-			# ),
-			# WeightNorm(
-			# 	layers.Conv1D(
-			# 		channels, kernel_size, strides=1, 
-			# 		dilation_rate=dilation[1],
-			# 		padding=get_padding(kernel_size, dilation[1])
-			# 	)
-			# ),
-			# WeightNorm(
-			# 	layers.Conv1D(
-			# 		channels, kernel_size, strides=1, 
-			# 		dilation_rate=dilation[2],
-			# 		padding=get_padding(kernel_size, dilation[2])
-			# 	)
-			# ),
 			tfa.layers.WeightNormalization(
 				layers.Conv1D(
 					channels, kernel_size, strides=1, 
@@ -67,24 +45,6 @@ class ResBlock1(layers.Layer):
 			),
 		]
 		self.convs2 = [
-			# WeightNorm(
-			# 	layers.Conv1D(
-			# 		channels, kernel_size, strides=1, dilation_rate=1,
-			# 		padding=get_padding(kernel_size, 1)
-			# 	)
-			# ),
-			# WeightNorm(
-			# 	layers.Conv1D(
-			# 		channels, kernel_size, strides=1, dilation_rate=1,
-			# 		padding=get_padding(kernel_size, 1)
-			# 	)
-			# ),
-			# WeightNorm(
-			# 	layers.Conv1D(
-			# 		channels, kernel_size, strides=1, dilation_rate=1,
-			# 		padding=get_padding(kernel_size, 1)
-			# 	)
-			# ),
 			tfa.layers.WeightNormalization(
 				layers.Conv1D(
 					channels, kernel_size, strides=1, dilation_rate=1,
@@ -108,16 +68,13 @@ class ResBlock1(layers.Layer):
 		self.convs2LReLU = layers.LeakyReLU(LRELU_SLOPE)
 
 
-	# def call(self, x, training=None):
 	def call(self, x):
 		for c1, c2 in zip(self.convs1, self.convs2):
 			# xt = layers.LeakyReLU(LRELU_SLOPE)(x) # Original
 			xt = self.convs1LReLU(x)
-			# xt = c1(xt, training)
 			xt = c1(xt)
 			# xt = layers.LeakyReLU(LRELU_SLOPE)(xt) # Original
 			xt = self.convs2LReLU(xt)
-			# xt = c2(xt, training)
 			xt = c2(xt)
 			x = xt + x
 		return x
@@ -128,20 +85,6 @@ class ResBlock2(layers.Layer):
 		super(ResBlock2, self).__init__()
 		self.hparams = hparams
 		self.convs = [
-			# WeightNorm(
-			# 	layers.Conv1D(
-			# 		channels, kernel_size, strides=1, 
-			# 		dilation_rate=dilation[0],
-			# 		padding=get_padding(kernel_size, dilation[0])
-			# 	)
-			# ),
-			# WeightNorm(
-			# 	layers.Conv1D(
-			# 		channels, kernel_size, strides=1, 
-			# 		dilation_rate=dilation[1],
-			# 		padding=get_padding(kernel_size, dilation[1])
-			# 	)
-			# ),
 			tfa.layers.WeightNormalization(
 				layers.Conv1D(
 					channels, kernel_size, strides=1, 
@@ -160,29 +103,21 @@ class ResBlock2(layers.Layer):
 		self.convLReLU = layers.LeakyReLU(LRELU_SLOPE)
 
 
-	# def call(self, x, training=None):
 	def call(self, x):
 		for c in self.convs:
 			# xt = layers.LeakyReLU(LRELU_SLOPE)(x) # Original
 			xt = self.convLReLU(x)
-			# xt = c(xt, training)
 			xt = c(xt)
 			x = xt + x
 		return x
 
 
-# class Generator(layers.Layer):
 class Generator(keras.Model):
 	def __init__(self, hparams):
 		super(Generator, self).__init__()
 		self.hparams = hparams
 		self.num_kernels = len(hparams.resblock_kernel_sizes)
 		self.num_upsamples = len(hparams.upsample_rates)
-		# self.conv_pre = WeightNorm(
-		# 	layers.Conv1D(
-		# 		hparams.upsample_initial_channel, 7, 1, #padding=3
-		# 	)
-		# )
 		self.conv_pre = tfa.layers.WeightNormalization(
 			layers.Conv1D(
 				hparams.upsample_initial_channel, 7, 1, padding="same"#padding=3
@@ -193,12 +128,6 @@ class Generator(keras.Model):
 		self.ups = []
 		for i, (u, k) in enumerate(zip(hparams.upsample_rates, hparams.upsample_kernel_sizes)):
 			self.ups.append(
-				# WeightNorm(
-				# 	layers.Conv1DTranspose(
-				# 		hparams.upsample_initial_channel // (2 ** (i + 1)),
-				# 		kernel_size=k, strides=u, #padding=(k - u) // 2
-				# 	)
-				# )
 				tfa.layers.WeightNormalization(
 					layers.Conv1DTranspose(
 						hparams.upsample_initial_channel // (2 ** (i + 1)),
@@ -213,11 +142,6 @@ class Generator(keras.Model):
 			for j, (k, d) in enumerate(zip(hparams.resblock_kernel_sizes, hparams.resblock_dilation_sizes)):
 				self.resblocks.append(resblock(hparams, ch, k, d))
 
-		# self.conv_post = WeightNorm(
-		# 	layers.Conv1D(
-		# 		1, kernel_size=7, strides=1, #padding=3
-		# 	)
-		# )
 		self.conv_post = tfa.layers.WeightNormalization(
 			layers.Conv1D(
 				1, kernel_size=7, strides=1, padding="same"#padding=3
@@ -228,27 +152,21 @@ class Generator(keras.Model):
 		self.leakyReLU = layers.LeakyReLU()
 
 	
-	# def call(self, x, training=None):
 	def call(self, x):
-		# x = self.conv_pre(x, training)
 		x = self.conv_pre(x)
 		for i in range(self.num_upsamples):
 			# x = layers.LeakyReLU(LRELU_SLOPE)(x) # Original
 			x = self.upLeakyReLU(x)
-			# x = self.ups[i](x, training)
 			x = self.ups[i](x)
 			xs = None
 			for j in range(self.num_kernels):
 				if xs is None:
-					# xs = self.resblocks[i * self.num_kernels + j](x, training)
 					xs = self.resblocks[i * self.num_kernels + j](x)
 				else:
-					# xs += self.resblocks[i * self.num_kernels + j](x, training)
 					xs += self.resblocks[i * self.num_kernels + j](x)
 			x = xs / self.num_kernels
 		# x = layers.LeakyReLU()(x) # Original
 		x = self.leakyReLU(x)
-		# x = self.conv_post(x, training)
 		x = self.conv_post(x)
 		x = tf.math.tanh(x)
 
@@ -300,17 +218,8 @@ class DiscriminatorP(layers.Layer):
 		self.flatten = layers.Flatten()
 
 
-	# def call(self, x, training=None):
 	def call(self, x):
 		fmap = []
-
-		# Ignore training argument to make sure it skips being called/
-		# passed through with the norm_f() layers. Refer to the
-		# following references:
-		# https://www.tensorflow.org/api_docs/python/tf/keras/layers/
-		# Layer#args_1
-		# https://www.tensorflow.org/guide/keras/custom_layers_and_
-		# models#privileged_training_argument_in_the_call_method
 
 		# 1d to 2d
 		# b, c, t = x.shape # Original in Pytorch
@@ -325,12 +234,10 @@ class DiscriminatorP(layers.Layer):
 		x = tf.reshape(x, [b, t // self.period, self.period, c])
 
 		for l in self.convs:
-			# x = l(x, training)
 			x = l(x)
 			# x = layers.LeakyReLU(LRELU_SLOPE)(x) # Original
 			x = self.convsLeakyReLU(x)
 			fmap.append(x)
-		# x = self.conv_post(x, training)
 		x = self.conv_post(x)
 		fmap.append(x)
 		# x = torch.flatten(x, 1, -1)
@@ -352,8 +259,6 @@ class MultiPeriodDiscriminator(keras.Model):
 		]
 
 
-	# def call(self, y, y_hat, training=None):
-	# def call(self, x, training=None):
 	def call(self, x):
 		y, y_hat = x
 		y_d_rs = []
@@ -361,8 +266,6 @@ class MultiPeriodDiscriminator(keras.Model):
 		fmap_rs = []
 		fmap_gs = []
 		for _, d in enumerate(self.discriminators):
-			# y_d_r, fmap_r = d(y, training)
-			# y_d_g, fmap_g = d(y_hat, training)
 			y_d_r, fmap_r = d(y)
 			y_d_g, fmap_g = d(y_hat)
 			y_d_rs.append(y_d_r)
@@ -432,25 +335,14 @@ class DiscriminatorS(layers.Layer):
 		self.flatten = layers.Flatten()
 
 
-	# def call(self, x, training=None):
 	def call(self, x):
 		fmap = []
 
-		# Ignore training argument to make sure it skips being called/
-		# passed through with the norm_f() layers. Refer to the
-		# following references:
-		# https://www.tensorflow.org/api_docs/python/tf/keras/layers/
-		# Layer#args_1
-		# https://www.tensorflow.org/guide/keras/custom_layers_and_
-		# models#privileged_training_argument_in_the_call_method
-
 		for l in self.convs:
-			# x = l(x, training)
 			x = l(x)
 			# x = layers.LeakyReLU(LRELU_SLOPE)(x) # Original
 			x = self.convsLeakyReLU(x)
 			fmap.append(x)
-		# x = self.conv_post(x, training)
 		x = self.conv_post(x)
 		fmap.append(x)
 		# x = torch.flatten(x, 1, -1)
@@ -459,7 +351,6 @@ class DiscriminatorS(layers.Layer):
 		return x, fmap
 
 
-# class MultiScaleDiscriminator(layers.Layer):
 class MultiScaleDiscriminator(keras.Model):
 	def __init__(self):
 		super(MultiScaleDiscriminator, self).__init__()
@@ -478,8 +369,6 @@ class MultiScaleDiscriminator(keras.Model):
 		]
 
 
-	# def call(self, y, y_hat, training=None):
-	# def call(self, x, training=None):
 	def call(self, x):
 		y, y_hat = x
 		y_d_rs = []
@@ -490,8 +379,6 @@ class MultiScaleDiscriminator(keras.Model):
 			if i != 0:
 				y = self.mean_pools[i - 1](y)
 				y_hat = self.mean_pools[i - 1](y_hat)
-			# y_d_r, fmap_r = d(y, training)
-			# y_d_g, fmap_g = d(y_hat, training)
 			y_d_r, fmap_r = d(y)
 			y_d_g, fmap_g = d(y_hat)
 			y_d_rs.append(y_d_r)
@@ -506,22 +393,22 @@ class MultiScaleDiscriminator(keras.Model):
 def get_generator(input_shape, hparams):
 		num_kernels = len(hparams.resblock_kernel_sizes)
 		num_upsamples = len(hparams.upsample_rates)
-		conv_pre = WeightNorm(
+		conv_pre = WeightNormalization(
 			layers.Conv1D(
 				hparams.upsample_initial_channel, 7, 1, #padding=3
-			)
+			), data_init=False
 		)
 		resblock = ResBlock1 if hparams.resblock == '1' else ResBlock2
 
 		ups = []
 		for i, (u, k) in enumerate(zip(hparams.upsample_rates, hparams.upsample_kernel_sizes)):
 			ups.append(
-				WeightNorm(
+				WeightNormalization(
 					layers.Conv1DTranspose(
 						hparams.upsample_initial_channel // (2 ** (i + 1)),
-						kernel_size=k, strides=u, #padding=(k - u) // 2
+						kernel_size=k, strides=u, padding="same"#padding=(k - u) // 2
 					)
-				)
+				), data_init=False
 			)
 
 		resblocks = []
@@ -530,10 +417,10 @@ def get_generator(input_shape, hparams):
 			for j, (k, d) in enumerate(zip(hparams.resblock_kernel_sizes, hparams.resblock_dilation_sizes)):
 				resblocks.append(resblock(hparams, ch, k, d))
 
-		conv_post = WeightNorm(
+		conv_post = WeightNormalization(
 			layers.Conv1D(
-				1, kernel_size=7, strides=1, #padding=3
-			)
+				1, kernel_size=7, strides=1, padding="same"#padding=3
+			), data_init=False
 		)
 
 		upLeakyReLU = layers.LeakyReLU(LRELU_SLOPE)
@@ -560,7 +447,7 @@ def get_generator(input_shape, hparams):
 		out = tf.math.tanh(x)
 
 		return keras.Model(
-			inputs=[inp], outputs = [out], name="Generator"
+			inputs=[inp], outputs=[out], name="Generator"
 		)
 
 

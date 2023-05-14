@@ -161,7 +161,7 @@ def main():
 	)
 
 	# Compile the model.
-	gan.compile(optim_g, optim_mpd, optim_msd, run_eagerly=True)
+	gan.compile(optim_g, optim_mpd, optim_msd, )#run_eagerly=True)
 
 	# Train the model.
 	gan.fit(train_data, validation_data=valid_data, epochs=1)
