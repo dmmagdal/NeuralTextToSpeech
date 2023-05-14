@@ -70,9 +70,6 @@ class Data:
 		self.load_mel_from_disk = load_mel_from_disk
 		self.n_speakers = n_speakers
 
-		self.max_audio_len = -1
-		self.max_mel_len = -1
-
 
 	def __getitem__(self, index):
 		# Separate filename and text
@@ -126,42 +123,11 @@ class Data:
 		return audio_norm, melspec
 
 
-	def get_max_lengths(self):
-		# Compute the maximum audio & mel-spectrogram lengths.
-		print("Isolating max input and target lengths...")
-		for idx in tqdm(range(len(self.audiopaths_and_text))):
-			audio, mel = self.__getitem__(idx)
-
-			self.max_audio_len = max(
-				tf.shape(audio)[0], self.max_audio_len
-			)
-			if mel is not None:
-				self.max_mel_len = max(
-					tf.shape(mel)[0], self.max_mel_len
-				)
-
-		print(f"Max audio length {self.max_audio_len}")
-		if not self.from_gtzan:
-			print(f"Max mel length {self.max_mel_len}")
-
-
 	def generator(self):
-		# Compute the maximum audio  and mel-spectrogram lengths.
-		# if (self.max_audio_len + self.max_mel_len < 0):
-		# 	self.get_max_lengths()
-
-		# assert self.max_audio_len != -1
-		# if not self.from_gtzan:
-		# 	assert self.max_mel_len != -1
-
-		# print(f"Max audio length {self.max_audio_len}")
-		# if not self.from_gtzan:
-		# 	print(f"Max mel length {self.max_mel_len}")
-
 		# Apply data collate function to each item in the dataset.
-		# print("Applying data collator function...")
 		for idx in tqdm(range(len(self.audiopaths_and_text))):
 			audio, mel = self.__getitem__(idx)
+
 			# This was a part of the regular collator in the original
 			# implementation but I removed it due to fears of issues
 			# with batching. Skip (audio) entries that are too short.
