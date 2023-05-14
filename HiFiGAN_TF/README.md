@@ -27,7 +27,7 @@ Description: HiFi-GAN is a GAN based vocoder used with neural text to speech mod
      * Initially, I used ChatGPT to generate custom layers for the `weight_norm` and `spectral_norm` functions from pytorch. Then I found out about the `WeightNormalization` ([documentation](https://www.tensorflow.org/addons/api_docs/python/tfa/layers/WeightNormalization)) and `SpectralNormalization` ([documenation](https://www.tensorflow.org/addons/api_docs/python/tfa/layers/SpectralNormalization)) from tensorflow-addons. I replaced the ChatGPT implementations with these layers.
          * Whether these actually allow me to save the model or not I've yet to test.
          * It was important to set the `data_init` argument in the `WeightNormalization` layer from tensorflow-addons to `False` because the default was `True` and that wasn't correct. However, in the lines where `SpectralNormalization` and `WeightNormalization` could be interchanged depending on the arguments passed into the parent layer (see `DiscriminatorP` and `DiscriminatorS` layers), it was difficult to specify that argument. Given that `SpectralNormalization` and `WeightNormalization` both have a second argument that is predefined, I used the same logic that sets which normalization layer to use to set the second argument of the respective layer.
-         * When running training, the mel spectrograms created by the generator are passed through the `mel_spectrogram()` function to pass to the mel loss. When in graph execution mode, tensorflow throws an error because it does not like using tensorflow operations (such as `tf.shape()`) as part of a python condition check (such as `if` or `assert` statements). An extra argument was added to the `mel_spectrogram()` that is set by default in favor of the data loader. That argument is set in the `train_step()` and `test_step()` to allow to bypass those checks so that the error does not occur when running the model in graph execution.
+         * When running training, the mel spectrograms created by the generator are passed through the `mel_spectrogram()` function to pass to the mel loss. When in graph execution mode, tensorflow throws an error because it does not like using tensorflow operations (such as `tf.shape()`) as part of a python condition check (such as `if` or `assert` statements). An extra argument was added to the `mel_spectrogram()` that is set by default in favor of the data loader. That argument is set in the `train_step()` and `test_step()` to allow to bypass those checks so that the error does not occur when running the model in graph execution. This does not seem to be an issue in eager execution mode.
      * The convolution layers (usually Conv2D) where padding is a tuple of int values (some of which are called from `get_padding()`) are replaced with the "same" string. This is because none of the convolution layers in tensorflow accept tuples for the padding. "same" was also chosen because the first values in the padding tuples usually resolved to a value greater than 1, which translates to "same" padding in tensorflow.
 
 
@@ -36,7 +36,6 @@ Description: HiFi-GAN is a GAN based vocoder used with neural text to speech mod
  1. Finish Model architecture
      * ~~Iron out the padding for the conv layers~~
      * Go back and add weight initializer for respective layers
-     * Implement ~~initialization, training loop,~~ model saving/loading, and ~~compiling~~ in `gan.py`. Alternatively, implement everything in `train.py`
  2. ~~Implement data loading~~
  3. Implement everything required for training (this can be done either in `gan.py` or `train.py`)
      * ~~Model initialization~~
@@ -45,3 +44,8 @@ Description: HiFi-GAN is a GAN based vocoder used with neural text to speech mod
          * ~~Model optimizer~~
      * ~~Training loop~~
      * Model saving/loading (includes resume saving from epoch)
+UPDATE:
+ * Eager execution of the model for training causes almost immediate OOM on GPU. On CPU, there seems to be an issue pulling the gradients for the generator in `train_step()`.
+     * This is regardless of what I use for the data loader in terms of specifying the output shape explicitly or with `None`.
+ * Graph execution for training results in an error due to the dataset shape.
+     * This is when I have the output signature of the dataset using `None` as part of the output shape. I am unable to really set specific/static values for the output shape because that would require a second pass through the data to pad out all data to a set shape.
