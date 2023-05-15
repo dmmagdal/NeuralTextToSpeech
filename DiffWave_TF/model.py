@@ -169,6 +169,12 @@ class DiffWave(keras.Model):
 		self.relu1 = layers.ReLU()
 		self.relu2 = layers.ReLU()
 
+		# Was originally in learner.py in original repo (could be in
+		# train.py in this repo).
+		beta = np.array(self.params.noise_schedule)
+		noise_level = np.cumprod(1 - beta)
+		self.noise_level = noise_level
+
 
 	def call(self, audio, diffusion_step, spectrogram=None):
 		assert (spectrogram is None and self.spectrogram_upsampler is None) or \
@@ -192,3 +198,32 @@ class DiffWave(keras.Model):
 		x = self.relu2(x)
 		x = self.output_projection(x)
 		return x
+	
+
+	def train_step(self, data):
+		audio, mel = data
+		N, T = audio.shape
+
+		t = tf.random.uniform(0, len(self.params.noise_schedule), [N])
+		t = tf.cast(tf.round(t), dtype=tf.int32)
+		noise_scale = tf.expand_dims(self.noise_level[t], 1)
+		noise_scale_sqrt = noise_scale ** 0.5
+		noise = tf.random.normal(tf.shape(audio))
+		noisy_audio = noise_scale_sqrt * audio + (1.0 - noise_scale) ** 0.5 * noise
+
+		with tf.GradientTape() as tape:
+			predicted = self(noisy_audio, t, mel)
+			loss = self.compiled_loss(noise, tf.squeeze(predicted, 1))
+
+		# Compute gradients.
+		trainable_vars = self.trainable_variables
+		gradients = tape.gradient(loss, trainable_vars)
+
+		# Update weights.
+		self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+
+		# Update metrics (includes the metric that tracks the loss)
+		self.compiled_metrics.update_state(noise, tf.squeeze(predicted, 1))
+
+		# Return a dict mapping metric names to current value
+		return {m.name: m.result() for m in self.metrics}
