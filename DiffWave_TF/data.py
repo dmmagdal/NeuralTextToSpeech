@@ -13,6 +13,9 @@ from tqdm import tqdm
 from common.audio_processing_tf import STFT
 
 
+random.seed(1)
+
+
 def load_filepaths_and_text(filelist, split="|"):
 	if isinstance(filelist, str):
 		with open(filelist, encoding='utf-8') as f:
@@ -131,7 +134,7 @@ class Data:
 			# This was a part of the regular collator in the original
 			# implementation but I removed it due to fears of issues
 			# with batching. Skip (audio) entries that are too short.
-			if not self.from_gtzan and tf.shape(audio)[0] < self.params.audio_len:
+			if not self.from_gtzan and tf.shape(audio)[1] < self.params.audio_len:
 				continue
 			else:
 				yield self.collate_fn((audio, mel))
@@ -148,6 +151,8 @@ class Data:
 		audio, mel = batch
 		samples_per_frame = self.hop_length
 
+		audio = tf.squeeze(audio, 0)
+
 		if self.params.unconditional:
 			# Subsample audio only for unconditional dataset.
 			start = random.randint(
@@ -157,16 +162,22 @@ class Data:
 			audio_slice = np.zeros((tf.shape(audio)), dtype=np.float32)
 			audio_slice = audio[start:end]
 			audio_slice = np.pad(
-				audio_slice, [0, (end - start) - len(audio)], 
+				audio_slice, [0, (end - start) - len(audio_slice)], 
 				mode="constant"
 			)
 
-			return audio_slice
+			# Convert back to tensorflow tensor(s).
+			audio_slice = tf.convert_to_tensor(
+				audio_slice, dtype=tf.float32
+			)
+
+			return audio_slice, None
 		else:
 			# Subsample audio and mel spectrogram for conditional
 			# dataset.
 			start = random.randint(
-				0, tf.shape(mel)[0] - self.params.crop_mel_frames)
+				0, tf.shape(mel)[0] - self.params.crop_mel_frames
+			)
 			end = start + self.params.crop_mel_frames
 			mel_slice = np.zeros(
 				(end - start, tf.shape(mel)[1]), dtype=np.float32
@@ -175,14 +186,53 @@ class Data:
 			
 			start *= samples_per_frame
 			end *= samples_per_frame
+			audio_slice = np.zeros(
+				(end - start), dtype=np.float32
+			)
 			audio_slice = audio[start:end]
 			audio_slice = np.pad(
-				audio_slice, [0, (end - start) - len(audio)], 
+				audio_slice, [0, (end - start) - len(audio_slice)], 
 				mode="constant"
+			)
+
+			# Convert back to tensorflow tensor(s).
+			audio_slice = tf.convert_to_tensor(
+				audio_slice, dtype=tf.float32
+			)
+			mel_slice = tf.convert_to_tensor(
+				mel_slice, dtype=tf.float32
 			)
 
 			return audio_slice, mel_slice
 
 
 	def gtzan_collate(self, batch):
-		pass
+		audio, mel = batch
+		mean_audio_len = self.params.audio_len # change to fit in gpu memory
+
+		# Not sure on input shape of audio. 
+		# audio = tf.squeeze(audio, 0)
+
+		# audio total generated time = audio_len * sample_rate
+		# GTZAN statistics
+		# max len audio 675808; min len audio sample 660000; mean len 
+		# audio sample 662117 max audio sample 1; min audio sample -1;
+		# mean audio sample -0.0010 (normalized) sample rate of all is
+		# 22050.
+		
+		if audio.shape[-1] < mean_audio_len:
+			# Pad.
+			audio = tf.pad(
+				audio, 
+				[[0, 0], [0, mean_audio_len - audio.shape[-1]]], 
+				mode="CONSTANT", constant_values=0
+			)
+		elif audio.shape[-1] > mean_audio_len:
+			# Crop.
+			start = random.randint(0, audio.shape[-1] - mean_audio_len)
+			end = start + mean_audio_len
+			audio = audio[:, start:end]
+		else:
+			audio = audio
+
+		return audio, None

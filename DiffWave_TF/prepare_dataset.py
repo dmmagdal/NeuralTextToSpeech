@@ -16,6 +16,7 @@ def main():
 
 	extract_mels = True
 	max_wav_value = 32768.0
+	gtzan = False # required to test that collater (set to true)
 
 	# mel extraction
 	# n_speakers = 1
@@ -49,7 +50,7 @@ def main():
 		# mel_fmax=mel_fmax
 		mel_fmin=params.f_min,
 		mel_fmax=params.f_max, 
-		from_gtzan=False
+		from_gtzan=gtzan
 	)
 
 	# Additional code.
@@ -77,6 +78,13 @@ def main():
 		# Output signature is different if using unconditional model.
 		signature = (
 			tf.TensorSpec(shape=(None,), dtype=tf.float32),	# audio
+			tf.TensorSpec(shape=(), dtype=tf.float32)		# mel
+		)
+	if gtzan:
+		# Output signature is different if using gtzan.
+		signature = (
+			tf.TensorSpec(shape=(1, None,), dtype=tf.float32),	# audio
+			tf.TensorSpec(shape=(), dtype=tf.float32)			# mel
 		)
 
 	data = tf.data.Dataset.from_generator( # Use in eager execution.
