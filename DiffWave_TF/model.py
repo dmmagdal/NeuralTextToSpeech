@@ -40,9 +40,10 @@ class DiffusionEmbedding(layers.Layer):
 		self.projection2 = layers.Dense(512)
 
 
-	def forward(self, diffusion_step):
+	def call(self, diffusion_step):
 		if diffusion_step.dtype in [tf.int32, tf.int64]:
-			x = self.embedding[diffusion_step]
+			# x = self.embedding[diffusion_step] # Original
+			x = tf.gather(self.embedding, diffusion_step)
 		else:
 			x = self._lerp_embedding(diffusion_step)
 		x = self.projection1(x)
@@ -61,8 +62,8 @@ class DiffusionEmbedding(layers.Layer):
 
 
 	def _build_embedding(self, max_steps):
-		steps = tf.expand_dims(tf.range(max_steps), 1)	# [T,1]
-		dims = tf.expand_dims(tf.range(64), 0)			# [1,64]
+		steps = tf.expand_dims(tf.range(max_steps, dtype=tf.float32), 1)	# [T,1]
+		dims = tf.expand_dims(tf.range(64, dtype=tf.float32), 0)			# [1,64]
 		table = steps * 10.0 ** (dims * 4.0 / 63.0)     # [T,64]
 		table = tf.concat(
 			[tf.math.sin(table), tf.math.cos(table)], axis=1
@@ -74,20 +75,25 @@ class SpectrogramUpsampler(layers.Layer):
 	def __init__(self, n_mels, **kwargs):
 		super(SpectrogramUpsampler, self).__init__(**kwargs)
 		self.conv1 = layers.Conv2DTranspose(
-			1, kernel_size=[3, 32], strides=[1, 16], padding="same"
+			# 1, kernel_size=[3, 32], strides=[1, 16], padding="same" # Original
+			1, kernel_size=[32, 3], strides=[16, 1], padding="same"
 		)
 		self.conv2 = layers.Conv2DTranspose(
-			1, kernel_size=[3, 32], strides=[1, 16], padding="same"
+			# 1, kernel_size=[3, 32], strides=[1, 16], padding="same" # Original
+			1, kernel_size=[32, 3], strides=[16, 1], padding="same"
 		)
 		self.leaky_relu1 = layers.LeakyReLU(0.4)
 		self.leaky_relu2 = layers.LeakyReLU(0.4)
 
 	
 	def call(self, x):
+		print(f"input to melspec upsampler {x.shape}")
 		x = tf.expand_dims(x, -1)
 		x = self.conv1(x)
+		print(f"conv1 {x.shape}")
 		x = self.leaky_relu1(x)
 		x = self.conv2(x)
+		print(f"conv2 {x.shape}")
 		x = self.leaky_relu2(x)
 		x = tf.squeeze(x, -1)
 		return x
@@ -104,43 +110,57 @@ class ResidualBlock(layers.Layer):
 
 		if not uncond:
 			# Conditional model.
-			self.conditional_projection = Conv1D(
+			self.conditioner_projection = Conv1D(
 				2 * residual_channels, 1
 			)
 		else:
 			# Unconditional model.
-			self.conditional_projection = None
+			self.conditioner_projection = None
 		
-		self.out_projection = Conv1D(2 * residual_channels, 1)
+		self.output_projection = Conv1D(2 * residual_channels, 1)
 
 
 	def call(self, x, diffusion_step, conditioner=None):
-		assert (conditioner is None and self.conditional_projection is None) or\
-			(conditioner is not None and self.conditional_projection is not None)
+		assert (conditioner is None and self.conditioner_projection is None) or\
+			(conditioner is not None and self.conditioner_projection is not None)
 		
+		print(f"input x.shape {x.shape}")
+		print(f"input diffusion_step.shape {diffusion_step.shape}")
+		print(f"input conditioner.shape {conditioner.shape}")
 		diffusion_step = tf.expand_dims(
-			self.diffusion_projection(diffusion_step), -1
+			# self.diffusion_projection(diffusion_step), -1 # Original
+			self.diffusion_projection(diffusion_step), 1
 		)
+		print(f"diffusion_step.shape (proj) {diffusion_step.shape}")
 		y = x + diffusion_step
+		print(f"y.shape {y.shape}")
 
 		if self.conditioner_projection is None:
 			# Using a unconditional model.
 			y = self.dilated_conv(y) 
 		else:
 			conditioner = self.conditioner_projection(conditioner)
+			print(f"conditoner.shape (proj) {conditioner.shape}")
+			print(f"y.shape (dilated conv) {self.dilated_conv(y).shape}")
 			y = self.dilated_conv(y) + conditioner
 
-		gate, filter = tf.split(y, 2, axis=1)
+		gate, filter = tf.split(y, 2, axis=-1)
+		print(f"gate.shape {gate.shape}")
+		print(f"filter.shape {filter.shape}")
 		y = tf.math.sigmoid(gate) * tf.math.tanh(filter)
+		print(f"y.shape (math) {y.shape}")
 
 		y = self.output_projection(y)
-		residual, skip = tf.split(y, 2, axis=1)
+		print(f"y.shape (out_proj) {y.shape}")
+		residual, skip = tf.split(y, 2, axis=-1)
+		print(f"residual.shape {residual.shape}")
+		print(f"skip.shape {skip.shape}")
 		return (x + residual) / sqrt(2.0), skip
 
 
 class DiffWave(keras.Model):
 	def __init__(self, params, **kwargs):
-		super(self, DiffWave).__init__(**kwargs)
+		super(DiffWave, self).__init__(**kwargs)
 		self.params = params
 		self.input_projection = Conv1D(params.residual_channels, 1)
 		self.diffusion_embedding = DiffusionEmbedding(
@@ -158,7 +178,7 @@ class DiffWave(keras.Model):
 		self.residual_layers = [
 			ResidualBlock(
 				params.n_mels, params.residual_channels, 
-				2**(i % params.dilation_cycle_length), 
+				2 ** (i % params.dilation_cycle_length), 
 				uncond=params.unconditional
 			)
 			for i in range(params.residual_layers)
@@ -176,22 +196,41 @@ class DiffWave(keras.Model):
 		self.noise_level = noise_level
 
 
-	def call(self, audio, diffusion_step, spectrogram=None):
+	# def call(self, audio, diffusion_step, spectrogram=None):
+	# def call(self, inputs, training=None, spectrogram=None):
+	def call(self, inputs):
+		assert len(inputs) < 4 and len(inputs) > 1
+		if len(inputs) == 2:
+			audio, diffusion_step = inputs
+			spectrogram = None
+		else:
+			audio, diffusion_step, spectrogram = inputs
+
 		assert (spectrogram is None and self.spectrogram_upsampler is None) or \
 			(spectrogram is not None and self.spectrogram_upsampler is not None)
 		x = tf.expand_dims(audio, -1)
+		print(f"x.shape {x.shape}")
 		x = self.input_projection(x)
+		print(f"x.shape (input_proj) {x.shape}")
 		x = self.relu1(x)
+		print(f"x.shape (relu) {x.shape}")
 
 		diffusion_step = self.diffusion_embedding(diffusion_step)
+		print(f"diffusion_step.shape {diffusion_step.shape}")
 		if self.spectrogram_upsampler: 
 			# Use conditional model.
 			spectrogram = self.spectrogram_upsampler(spectrogram)
+		print(f"spectrogram_upsampler {self.spectrogram_upsampler is not None}")
+		if self.spectrogram_upsampler:
+			print(f"spectrogram.shape (after upsampler) {spectrogram.shape}")
+		else:
+			print(f"spectrogram.shape (no upsampler) {spectrogram.shape}")
 
 		skip = None
 		for layer in self.residual_layers:
 			x, skip_connection = layer(x, diffusion_step, spectrogram)
 			skip = skip_connection if skip is None else skip_connection + skip
+			exit()
 
 		x = skip / sqrt(len(self.residual_layers))
 		x = self.skip_projection(x)
@@ -204,15 +243,28 @@ class DiffWave(keras.Model):
 		audio, mel = data
 		N, T = audio.shape
 
-		t = tf.random.uniform(0, len(self.params.noise_schedule), [N])
+		print(f"N {N}")
+		print(f"T {T}")
+
+		t = tf.random.uniform([N], 0, len(self.params.noise_schedule))
 		t = tf.cast(tf.round(t), dtype=tf.int32)
-		noise_scale = tf.expand_dims(self.noise_level[t], 1)
+		print(f"t {t}\n{t.shape}")
+		print(f"noise_level {self.noise_level}\n{self.noise_level.shape}")
+		# noise_scale = tf.expand_dims(self.noise_level[t], 1)
+		noise_scale = tf.expand_dims(tf.gather(self.noise_level, t), 1)
+		noise_scale = tf.cast(noise_scale, dtype=tf.float32) # added to convert from float64 to float32
+		print(f"noise_scale {noise_scale}\n{noise_scale.shape}, {noise_scale.dtype}")
 		noise_scale_sqrt = noise_scale ** 0.5
-		noise = tf.random.normal(tf.shape(audio))
+		print(f"noise_scale_sqrt {noise_scale_sqrt.shape}, {noise_scale_sqrt.dtype}")
+		noise = tf.random.normal(tf.shape(audio), dtype=tf.float32)
+		print(f"noise {noise.shape}, {noise.dtype}")
 		noisy_audio = noise_scale_sqrt * audio + (1.0 - noise_scale) ** 0.5 * noise
+		print(f"noisy_audio {noisy_audio}\n{noisy_audio.shape}")
 
 		with tf.GradientTape() as tape:
-			predicted = self(noisy_audio, t, mel)
+			# predicted = self(noisy_audio, t, mel)
+			# predicted = self((noisy_audio, t), spectrogram=mel)
+			predicted = self((noisy_audio, t, mel))
 			loss = self.compiled_loss(noise, tf.squeeze(predicted, 1))
 
 		# Compute gradients.
