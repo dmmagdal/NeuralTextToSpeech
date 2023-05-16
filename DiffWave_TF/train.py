@@ -124,9 +124,13 @@ def main():
 	model = DiffWave(params)
 
 	# Compute the number of epochs from max_steps (1 step = 1 batch).
-	steps_per_epoch = train_data.__len__() / params.batch_size
-	epochs = math.ceil(args.max_steps / steps_per_epoch)
-	print(f"Training DiffWave vocoder for {args.max_steps} steps at batch size {params.batch_size} ({epochs} epochs)")
+	if args.max_steps is not None:
+		steps_per_epoch = train_data.__len__() / params.batch_size
+		epochs = math.ceil(args.max_steps / steps_per_epoch)
+		print(f"Training DiffWave vocoder for {args.max_steps} steps at batch size {params.batch_size} ({epochs} epochs)")
+	else:
+		epochs = 1
+		print(f"Training DiffWave vocoder for 1 epoch at batch size {params.batch_size}")
 
 	# Compile and train model.
 	model.compile(optimizer=optimizer, loss=loss, )#run_eagerly=True)
@@ -136,6 +140,11 @@ def main():
 		epochs=epochs
 	)
 	model.summary()
+
+	model.save('diff_wave')
+
+	loaded_model = keras.models.load_model('diff_wave')
+	loaded_model.summary()
 
 	# Exit the program.
 	exit(0)
