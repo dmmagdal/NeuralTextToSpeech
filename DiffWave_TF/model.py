@@ -9,7 +9,7 @@ from tensorflow.keras import layers
 
 
 class Conv1D(layers.Layer):
-	def __init__(self, filters, kernel_size, padding="valid", dilation=1, **kwargs):
+	def __init__(self, filters, kernel_size, padding="valid", dilation=1, zero_init=False, **kwargs):
 		super(Conv1D, self).__init__(**kwargs)
 		if padding == 0:
 			padding = "valid"
@@ -18,9 +18,18 @@ class Conv1D(layers.Layer):
 		else:
 			padding = "same"
 
+		# Supposedly the equivalent of torch.nn.init.kaiming_normal_()
+		# in tensorflow as suggested by ChatGPT.
+		initializer = keras.initializers.VarianceScaling(
+			scale=2.0,
+			mode="fan_in",
+			distribution="truncated_normal"
+		) if not zero_init else keras.initializers.Zeros()
+
 		self.conv = layers.Conv1D(
 			filters, kernel_size, padding=padding, 
-			dilation_rate=dilation
+			dilation_rate=dilation,
+			kernel_initializer=initializer
 		)
 
 	
@@ -168,7 +177,7 @@ class DiffWave(keras.Model):
 			for i in range(params.residual_layers)
 		]
 		self.skip_projection = Conv1D(params.residual_channels, 1)
-		self.output_projection = Conv1D(1, 1)
+		self.output_projection = Conv1D(1, 1, zero_init=True)
 
 		self.relu1 = layers.ReLU()
 		self.relu2 = layers.ReLU()

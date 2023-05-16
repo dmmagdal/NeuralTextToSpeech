@@ -11,15 +11,15 @@ Description: DiffWave is a Diffusion vocoder used with neural text to speech mod
  * Original repo can be found [here](https://github.com/lmnt-com/diffwave). The original paper for DiffWave is [here](https://arxiv.org/pdf/2009.09761.pdf).
  * The batch size was brought down from 16 to 4 for the sake of being able to train. Also note that modifying the batch size requires modification to the number of steps for training.
  * The large loading bar that comes up when training the model is the data loader bar. The data loader resets at the end of every epoch (probably because the dataset was loaded from generator? Could be dynamically loaded because of it?). The training tracker loading bar is only properly visible at the end of an epoch (and subsequently the end of the data loader bar).
- * There are three sorts of data and two sorts of models available for DiffWave. Unconditional model (and data), conditional model (and data), and gtzan data. I don't know the difference between all of them but the data appears to have an impact on the shape (I'd have to verify). 
+ * There are three sorts of data and two sorts of models available for DiffWave. Unconditional model (and data), conditional model (and data), and gtzan data (use unconditional model). I don't know the difference between all of them but the data appears to have an impact on the shape (I'd have to verify). 
  	 * I have only verified training the conditional model with conditonal data on LJSpeech dataset.
 
 
 ### TODO List (for V1 release)
 
- [ ] Verify model architecture
+ [x] Verify model architecture
  [ ] Finish and verify training loop
- 	 [ ] Train step
+ 	 [x] Train step
  	 [ ] Validation step
  [ ] Model checkpointing, saving, & loading
  [ ] Model resume training
