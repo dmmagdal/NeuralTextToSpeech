@@ -15,8 +15,8 @@ from params import params
 def main():
 	# Parse arguments.
 	parser = ArgumentParser(description='train (or resume training) a DiffWave model')
-	parser.add_argument('model_dir',
-		help='directory in which to store model checkpoints and training logs')
+	# parser.add_argument('model_dir',
+	# 	help='directory in which to store model checkpoints and training logs')
 	# parser.add_argument('data_dirs', nargs='+',
 	# 	help='space separated list of directories from which to read .wav files for training')	# Not used. Hard coded.
 	parser.add_argument('--max_steps', default=None, type=int,
@@ -29,7 +29,7 @@ def main():
 	# Initialize datasets.
 	gtzan = False
 
-	dataset_path = './ljspeech_train'
+	dataset_path = './ljspeech_train_valid'
 	train_list = './filelists/ljs_audio_text_train_v3.txt'
 	valid_list = './filelists/ljs_audio_text_val.txt'
 
@@ -123,11 +123,17 @@ def main():
 	# Initialize model.
 	model = DiffWave(params)
 
+	# Compute the number of epochs from max_steps (1 step = 1 batch).
+	steps_per_epoch = train_data.__len__() / params.batch_size
+	epochs = math.ceil(args.max_steps / steps_per_epoch)
+	print(f"Training DiffWave vocoder for {args.max_steps} steps at batch size {params.batch_size} ({epochs} epochs)")
+
 	# Compile and train model.
-	epochs = math.ceil(args.max_steps // train_data.__len__())
-	model.compile(optimizer=optimizer, loss=loss)
+	model.compile(optimizer=optimizer, loss=loss, )#run_eagerly=True)
 	history = model.fit(
-		train_dataset, validation_data=valid_dataset, epochs=epochs
+		train_dataset, 
+		# validation_data=valid_dataset, 
+		epochs=epochs
 	)
 	model.summary()
 
@@ -136,4 +142,6 @@ def main():
 
 
 if __name__ == "__main__":
+	# with tf.device('/cpu:0'):
+	# 	main()
 	main()

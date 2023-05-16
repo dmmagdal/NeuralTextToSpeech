@@ -87,13 +87,10 @@ class SpectrogramUpsampler(layers.Layer):
 
 	
 	def call(self, x):
-		print(f"input to melspec upsampler {x.shape}")
 		x = tf.expand_dims(x, -1)
 		x = self.conv1(x)
-		print(f"conv1 {x.shape}")
 		x = self.leaky_relu1(x)
 		x = self.conv2(x)
-		print(f"conv2 {x.shape}")
 		x = self.leaky_relu2(x)
 		x = tf.squeeze(x, -1)
 		return x
@@ -124,37 +121,24 @@ class ResidualBlock(layers.Layer):
 		assert (conditioner is None and self.conditioner_projection is None) or\
 			(conditioner is not None and self.conditioner_projection is not None)
 		
-		print(f"input x.shape {x.shape}")
-		print(f"input diffusion_step.shape {diffusion_step.shape}")
-		print(f"input conditioner.shape {conditioner.shape}")
 		diffusion_step = tf.expand_dims(
 			# self.diffusion_projection(diffusion_step), -1 # Original
 			self.diffusion_projection(diffusion_step), 1
 		)
-		print(f"diffusion_step.shape (proj) {diffusion_step.shape}")
 		y = x + diffusion_step
-		print(f"y.shape {y.shape}")
 
 		if self.conditioner_projection is None:
 			# Using a unconditional model.
 			y = self.dilated_conv(y) 
 		else:
 			conditioner = self.conditioner_projection(conditioner)
-			print(f"conditoner.shape (proj) {conditioner.shape}")
-			print(f"y.shape (dilated conv) {self.dilated_conv(y).shape}")
 			y = self.dilated_conv(y) + conditioner
 
 		gate, filter = tf.split(y, 2, axis=-1)
-		print(f"gate.shape {gate.shape}")
-		print(f"filter.shape {filter.shape}")
 		y = tf.math.sigmoid(gate) * tf.math.tanh(filter)
-		print(f"y.shape (math) {y.shape}")
 
 		y = self.output_projection(y)
-		print(f"y.shape (out_proj) {y.shape}")
 		residual, skip = tf.split(y, 2, axis=-1)
-		print(f"residual.shape {residual.shape}")
-		print(f"skip.shape {skip.shape}")
 		return (x + residual) / sqrt(2.0), skip
 
 
@@ -209,28 +193,18 @@ class DiffWave(keras.Model):
 		assert (spectrogram is None and self.spectrogram_upsampler is None) or \
 			(spectrogram is not None and self.spectrogram_upsampler is not None)
 		x = tf.expand_dims(audio, -1)
-		print(f"x.shape {x.shape}")
 		x = self.input_projection(x)
-		print(f"x.shape (input_proj) {x.shape}")
 		x = self.relu1(x)
-		print(f"x.shape (relu) {x.shape}")
 
 		diffusion_step = self.diffusion_embedding(diffusion_step)
-		print(f"diffusion_step.shape {diffusion_step.shape}")
 		if self.spectrogram_upsampler: 
 			# Use conditional model.
 			spectrogram = self.spectrogram_upsampler(spectrogram)
-		print(f"spectrogram_upsampler {self.spectrogram_upsampler is not None}")
-		if self.spectrogram_upsampler:
-			print(f"spectrogram.shape (after upsampler) {spectrogram.shape}")
-		else:
-			print(f"spectrogram.shape (no upsampler) {spectrogram.shape}")
 
 		skip = None
 		for layer in self.residual_layers:
 			x, skip_connection = layer(x, diffusion_step, spectrogram)
 			skip = skip_connection if skip is None else skip_connection + skip
-			exit()
 
 		x = skip / sqrt(len(self.residual_layers))
 		x = self.skip_projection(x)
@@ -243,29 +217,21 @@ class DiffWave(keras.Model):
 		audio, mel = data
 		N, T = audio.shape
 
-		print(f"N {N}")
-		print(f"T {T}")
-
 		t = tf.random.uniform([N], 0, len(self.params.noise_schedule))
 		t = tf.cast(tf.round(t), dtype=tf.int32)
-		print(f"t {t}\n{t.shape}")
-		print(f"noise_level {self.noise_level}\n{self.noise_level.shape}")
 		# noise_scale = tf.expand_dims(self.noise_level[t], 1)
 		noise_scale = tf.expand_dims(tf.gather(self.noise_level, t), 1)
 		noise_scale = tf.cast(noise_scale, dtype=tf.float32) # added to convert from float64 to float32
-		print(f"noise_scale {noise_scale}\n{noise_scale.shape}, {noise_scale.dtype}")
 		noise_scale_sqrt = noise_scale ** 0.5
-		print(f"noise_scale_sqrt {noise_scale_sqrt.shape}, {noise_scale_sqrt.dtype}")
 		noise = tf.random.normal(tf.shape(audio), dtype=tf.float32)
-		print(f"noise {noise.shape}, {noise.dtype}")
 		noisy_audio = noise_scale_sqrt * audio + (1.0 - noise_scale) ** 0.5 * noise
-		print(f"noisy_audio {noisy_audio}\n{noisy_audio.shape}")
-
+		
 		with tf.GradientTape() as tape:
 			# predicted = self(noisy_audio, t, mel)
 			# predicted = self((noisy_audio, t), spectrogram=mel)
 			predicted = self((noisy_audio, t, mel))
-			loss = self.compiled_loss(noise, tf.squeeze(predicted, 1))
+			# loss = self.compiled_loss(noise, tf.squeeze(predicted, 1)) # Original
+			loss = self.compiled_loss(noise, tf.squeeze(predicted, -1))
 
 		# Compute gradients.
 		trainable_vars = self.trainable_variables
@@ -275,7 +241,10 @@ class DiffWave(keras.Model):
 		self.optimizer.apply_gradients(zip(gradients, trainable_vars))
 
 		# Update metrics (includes the metric that tracks the loss)
-		self.compiled_metrics.update_state(noise, tf.squeeze(predicted, 1))
+		self.compiled_metrics.update_state(
+			# noise, tf.squeeze(predicted, 1) # Original
+			noise, tf.squeeze(predicted, -1)
+		)
 
 		# Return a dict mapping metric names to current value
 		return {m.name: m.result() for m in self.metrics}
