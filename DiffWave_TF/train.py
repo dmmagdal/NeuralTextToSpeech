@@ -2,6 +2,7 @@
 
 
 from argparse import ArgumentParser
+from datetime import datetime
 import math
 import os
 import numpy as np
@@ -23,6 +24,8 @@ def main():
 		help='maximum number of training steps')
 	parser.add_argument('--fp16', action='store_true', default=False,
 		help='use 16-bit floating point operations for training')
+	parser.add_argument('--resume_training', action='store_true', default=False,
+		help='resume from latest checkpoint')
 	args = parser.parse_args()
 
 
@@ -132,18 +135,79 @@ def main():
 		epochs = 1
 		print(f"Training DiffWave vocoder for 1 epoch at batch size {params.batch_size}")
 
-	# Compile and train model.
-	model.compile(optimizer=optimizer, loss=loss, )#run_eagerly=True)
+	# Tensorboard callback.
+
+	tensorboard_dir = "./diffwave_logs/fit/"
+	tensorboard_log = os.path.join(
+		tensorboard_dir, datetime.now().strftime("%Y%m%d-%H%M%S")
+	)
+	tensorboard_callback = keras.callbacks.TensorBoard(
+		log_dir=tensorboard_log, histogram_freq=1
+	) # https://www.tensorflow.org/tensorboard/get_started
+
+	# Checkpoint callback.
+	checkpoint_dir = "./diffwave_logs/checkpoints/"
+	checkpoint_log = os.path.join(
+		checkpoint_dir, "diff_wave-{epoch:04d}"
+	) # saved model
+	# os.makedirs(checkpoint_log, exist_ok=True)
+	checkpoint_callback = keras.callbacks.ModelCheckpoint(
+		checkpoint_log,
+		# monitor="val_loss", # Default. Can change to regular "loss"
+		# save_best_only=True,
+		save_freq="epoch",
+	) # https://www.tensorflow.org/api_docs/python/tf/keras/callbacks/ModelCheckpoint
+
+	# Logic for resuming training from latest checkpoint or train from
+	# scratch.
+	if args.resume_training and os.path.exists(checkpoint_dir) and len(os.listdir(checkpoint_dir)) > 0:
+		# Load model weights with tf.train.latest_checkpoint.
+		# latest_checkpoint = tf.train.latest_checkpoint(checkpoint_dir)
+		# initial_epoch = int(
+		# 	latest_checkpoint.lstrip(checkpoint_dir + "diff_wave-")
+		# )
+		latest_checkpoint = os.path.join(
+			checkpoint_dir,
+			os.listdir(checkpoint_dir)[-1] # assume lexicographic order with 4 digit epoch value
+		)
+		initial_epoch = int(
+			latest_checkpoint.lstrip(checkpoint_dir + "diff_wave-")
+		)
+	else:
+		# No previous checkpoint exits. Create checkpoint directory and
+		# start at the first epoch.
+		os.makedirs(checkpoint_dir, exist_ok=True)
+		latest_checkpoint = None
+		initial_epoch = 0
+
+	if latest_checkpoint:
+		# Load latest checkpoint to model (should have loss and
+		# optimizer state).
+		print(f"loading from checkpoint {latest_checkpoint}")
+		model = tf.keras.models.load_model(latest_checkpoint)
+		# print(model.summary())
+		# exit()
+	else:
+		# Compile model.
+		model.compile(optimizer=optimizer, loss=loss,)# run_eagerly=True)
+
+	epochs = 5#3 # Hard coded. Set to 5 after run.
+	
+	# Train model.
 	history = model.fit(
 		train_dataset, 
-		# validation_data=valid_dataset, 
-		epochs=epochs
+		validation_data=valid_dataset, 
+		epochs=epochs,
+		callbacks=[tensorboard_callback, checkpoint_callback],
+		initial_epoch=initial_epoch
 	)
 	model.summary()
 
-	model.save('diff_wave')
-
+	# Save and load the model (use SavedModel format).
+	model.save('diff_wave') # default format is SavedModel for Tf 2.X
 	loaded_model = keras.models.load_model('diff_wave')
+
+	# Use loaded model summary to confirm model matches.
 	loaded_model.summary()
 
 	# Exit the program.

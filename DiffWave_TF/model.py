@@ -8,9 +8,9 @@ from tensorflow import keras
 from tensorflow.keras import layers
 
 
-class Conv1D(layers.Layer):
+class DilatedConv1D(layers.Layer):
 	def __init__(self, filters, kernel_size, padding="valid", dilation=1, zero_init=False, **kwargs):
-		super(Conv1D, self).__init__(**kwargs)
+		super(DilatedConv1D, self).__init__(**kwargs)
 		if padding == 0:
 			padding = "valid"
 		elif padding == 1:
@@ -108,7 +108,7 @@ class SpectrogramUpsampler(layers.Layer):
 class ResidualBlock(layers.Layer):
 	def __init__(self, n_mels, residual_channels, dilation, uncond=False, **kwargs):
 		super(ResidualBlock, self).__init__(**kwargs)
-		self.dilated_conv = Conv1D(
+		self.dilated_conv = DilatedConv1D(
 			2 * residual_channels, 3, padding=dilation, 
 			dilation=dilation
 		)
@@ -116,14 +116,16 @@ class ResidualBlock(layers.Layer):
 
 		if not uncond:
 			# Conditional model.
-			self.conditioner_projection = Conv1D(
+			self.conditioner_projection = DilatedConv1D(
 				2 * residual_channels, 1
 			)
 		else:
 			# Unconditional model.
 			self.conditioner_projection = None
 		
-		self.output_projection = Conv1D(2 * residual_channels, 1)
+		self.output_projection = DilatedConv1D(
+			2 * residual_channels, 1
+		)
 
 
 	def call(self, x, diffusion_step, conditioner=None):
@@ -155,7 +157,7 @@ class DiffWave(keras.Model):
 	def __init__(self, params, **kwargs):
 		super(DiffWave, self).__init__(**kwargs)
 		self.params = params
-		self.input_projection = Conv1D(params.residual_channels, 1)
+		self.input_projection = DilatedConv1D(params.residual_channels, 1)
 		self.diffusion_embedding = DiffusionEmbedding(
 			len(params.noise_schedule)
 		)
@@ -176,8 +178,8 @@ class DiffWave(keras.Model):
 			)
 			for i in range(params.residual_layers)
 		]
-		self.skip_projection = Conv1D(params.residual_channels, 1)
-		self.output_projection = Conv1D(1, 1, zero_init=True)
+		self.skip_projection = DilatedConv1D(params.residual_channels, 1)
+		self.output_projection = DilatedConv1D(1, 1, zero_init=True)
 
 		self.relu1 = layers.ReLU()
 		self.relu2 = layers.ReLU()
@@ -252,6 +254,30 @@ class DiffWave(keras.Model):
 		# Update metrics (includes the metric that tracks the loss)
 		self.compiled_metrics.update_state(
 			# noise, tf.squeeze(predicted, 1) # Original
+			noise, tf.squeeze(predicted, -1)
+		)
+
+		# Return a dict mapping metric names to current value
+		return {m.name: m.result() for m in self.metrics}
+
+
+	def test_step(self, data):
+		audio, mel = data
+		N, T = audio.shape
+
+		t = tf.random.uniform([N], 0, len(self.params.noise_schedule))
+		t = tf.cast(tf.round(t), dtype=tf.int32)
+		noise_scale = tf.expand_dims(tf.gather(self.noise_level, t), 1)
+		noise_scale = tf.cast(noise_scale, dtype=tf.float32) # added to convert from float64 to float32
+		noise_scale_sqrt = noise_scale ** 0.5
+		noise = tf.random.normal(tf.shape(audio), dtype=tf.float32)
+		noisy_audio = noise_scale_sqrt * audio + (1.0 - noise_scale) ** 0.5 * noise
+		
+		predicted = self((noisy_audio, t, mel))
+		loss = self.compiled_loss(noise, tf.squeeze(predicted, -1))
+
+		# Update metrics (includes the metric that tracks the loss)
+		self.compiled_metrics.update_state(
 			noise, tf.squeeze(predicted, -1)
 		)
 
