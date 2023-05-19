@@ -13,7 +13,22 @@ Description: DiffWave is a Diffusion vocoder used with neural text to speech mod
  * The large loading bar that comes up when training the model is the data loader bar. The data loader resets at the end of every epoch (probably because the dataset was loaded from generator? Could be dynamically loaded because of it?). The training tracker loading bar is only properly visible at the end of an epoch (and subsequently the end of the data loader bar).
  * There are three sorts of data and two sorts of models available for DiffWave. Unconditional model (and data), conditional model (and data), and gtzan data (use unconditional model). I don't know the difference between all of them but the data appears to have an impact on the shape (I'd have to verify). 
  	 * I have only verified training the conditional model with conditonal data on LJSpeech dataset.
-  * Called `Conv1D` layer `DilatedConv1D`. Not sure if that is actually an accurate representation of the layer but seems close enough. This (diffwave repo](https://github.com/revsic/tf-diffwave) implemented in tensorflow refers to it as `DilatedConv1d` (and it also refers to the overall DiffWave model/neural network as Wavenet).
+ * Called `Conv1D` layer `DilatedConv1D`. Not sure if that is actually an accurate representation of the layer but seems close enough. This (diffwave repo](https://github.com/revsic/tf-diffwave) implemented in tensorflow refers to it as `DilatedConv1d` (and it also refers to the overall DiffWave model/neural network as Wavenet).
+ * Resuming training model from checkpoint:
+	 * There are two ways to save the DiffWave model, one is to save the weights (in a H5 file) or save the whole model in a SavedModel or HDF5 format).
+	 * When you save the weights of a model, you have to re initialize the model (with the same hyperparameters) before loading the model weights ([documentation](https://www.tensorflow.org/tutorials/keras/save_and_load#manually_save_weights)). Because of this, you get full access to the model functions (ie train_step(), fit(), compute_loss()). You would also lose optimizer state if you wished to continue training/finetuning the model.
+	 * When saving a model with tf.keras.Model.save(), there is the option to save the model either in HDF5 (H5) format or SavedModel format (the default).
+		 * The SavedModel format is a directory containing a protobuf binary and a TensorFlow checkpoint. When loading a model from SavedModel, the restored model is compiled with the same arguments as the original model ([documentation](https://www.tensorflow.org/tutorials/keras/save_and_load#save_the_entire_model)).
+		 * The HDF5 format works similarly to SavedModel. The HDF5 format contains everything in an H5 file ([documentation](https://www.tensorflow.org/tutorials/keras/save_and_load#hdf5_format)).
+	 * Keras saves models by inspecting their architectures. This technique saves everything, including the weight values, the model's architecture, the model's training configuration (what you pass to the .compile() method), and the optimizer and its state, if any (this enables you to restart training where you left off).
+	 * The key difference between HDF5 and SavedModel is that HDF5 uses object configs to save the model architecture, while SavedModel saves the execution graph. Thus, SavedModels are able to save custom objects like subclassed models and custom layers without requiring the original code ([documentation](https://www.tensorflow.org/tutorials/keras/save_and_load#saving_custom_objects)).
+		 * To save custom objects to HDF5, you must do the following:
+			 1. Define a get_config method in your object, and optionally a from_config classmethod.
+				 * get_config(self) returns a JSON-serializable dictionary of parameters needed to recreate the object.
+				 * from_config(cls, config) uses the returned config from get_config to create a new object. By default, this function will use the config as initialization kwargs (return cls(\*\*config)).
+			 2. Pass the object to the custom_objects argument when loading the model. The argument must be a dictionary mapping the string class name to the Python class. E.g. tf.keras.models.load_model(path, custom_objects={'CustomLayer': CustomLayer})
+	 * When you load a SavedModel in Python, all tf.Variable attributes, tf.function-decorated methods, and tf.Modules are restored in the same object structure as the original saved tf.Module ([documentation](https://www.tensorflow.org/guide/saved_model#loading_and_using_a_custom_model), [serialization documentation](https://github.com/tensorflow/community/blob/master/rfcs/20190509-keras-saved-model.md#serialization-details)).
+	 	 * The SavedModel format is not the same as tf.keras.Model. This means that some functions like call(), predict(), and summary() still work just fine, but other functions like train_step(), compute_loss(), and fit() are not available to use once loaded. This means that in order to retrain or finetune a model loaded from SavedModel, a custom training loop must be used instead of model.fit() + model.train_step()/model.valid_step(). In addition, model attriutes (ie self.params or self.is_conditional) are not accessible from the SavedModel format since they were saved in the sub-classed tf.keras.Model class (supposedly, you can access variables that were declared tf.Variable() inside the SavedModel).
 
 
 ### TODO List (for V1 release)
@@ -50,7 +65,10 @@ UPDATE:
 		 * [training checkpoints](https://www.tensorflow.org/guide/checkpoint)
 		 * [train checkpoint](https://www.tensorflow.org/api_docs/python/tf/train/Checkpoint)
 		 * [train latest_checkpoint](https://www.tensorflow.org/api_docs/python/tf/train/latest_checkpoint)
+		 * [train checkpoint manager](https://www.tensorflow.org/api_docs/python/tf/train/CheckpointManager)
 		 * [save and load models](https://www.tensorflow.org/tutorials/keras/save_and_load)
+		 * [using the savedmodel format](https://www.tensorflow.org/guide/saved_model)
+		 * [savedmodel serialization details](https://github.com/tensorflow/community/blob/master/rfcs/20190509-keras-saved-model.md#serialization-details)
 	 * Tensorboard
 		 * [tensorboard callback](https://www.tensorflow.org/api_docs/python/tf/keras/callbacks/TensorBoard)
 		 * [getting started](https://www.tensorflow.org/tensorboard/get_started) with tensorboard
