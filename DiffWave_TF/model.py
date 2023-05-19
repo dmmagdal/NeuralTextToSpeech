@@ -193,13 +193,15 @@ class DiffWave(keras.Model):
 
 	# def call(self, audio, diffusion_step, spectrogram=None):
 	# def call(self, inputs, training=None, spectrogram=None):
-	def call(self, inputs):
-		assert len(inputs) < 4 and len(inputs) > 1
+	def call(self, inputs, **kwargs):
+		assert (len(inputs) == 3) or (len(inputs) == 2)
 		if len(inputs) == 2:
 			audio, diffusion_step = inputs
 			spectrogram = None
 		else:
 			audio, diffusion_step, spectrogram = inputs
+		# assert len(inputs) == 2
+		# audio, diffusion_step = inputs
 
 		assert (spectrogram is None and self.spectrogram_upsampler is None) or \
 			(spectrogram is not None and self.spectrogram_upsampler is not None)
@@ -251,7 +253,7 @@ class DiffWave(keras.Model):
 		# Update weights.
 		self.optimizer.apply_gradients(zip(gradients, trainable_vars))
 
-		# Update metrics (includes the metric that tracks the loss)
+		# Update metrics (includes the metric that tracks the loss).
 		self.compiled_metrics.update_state(
 			# noise, tf.squeeze(predicted, 1) # Original
 			noise, tf.squeeze(predicted, -1)
@@ -273,10 +275,12 @@ class DiffWave(keras.Model):
 		noise = tf.random.normal(tf.shape(audio), dtype=tf.float32)
 		noisy_audio = noise_scale_sqrt * audio + (1.0 - noise_scale) ** 0.5 * noise
 		
+		# predicted = self(noisy_audio, t, mel)
+		# predicted = self((noisy_audio, t), spectrogram=mel)
 		predicted = self((noisy_audio, t, mel))
 		loss = self.compiled_loss(noise, tf.squeeze(predicted, -1))
 
-		# Update metrics (includes the metric that tracks the loss)
+		# Update metrics (includes the metric that tracks the loss).
 		self.compiled_metrics.update_state(
 			noise, tf.squeeze(predicted, -1)
 		)

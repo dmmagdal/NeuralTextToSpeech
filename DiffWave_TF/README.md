@@ -48,8 +48,8 @@ UPDATE:
 ### References
 
  * DiffWave Repos
-	* [Diffwave](https://github.com/lmnt-com/diffwave)
-	* [TF-Diffwave](https://github.com/revsic/tf-diffwave)
+	 * [Diffwave](https://github.com/lmnt-com/diffwave)
+	 * [TF-Diffwave](https://github.com/revsic/tf-diffwave)
  * Tensorflow
 	 * Audio ([tf.audio](https://www.tensorflow.org/api_docs/python/tf/audio))
 		 * [encode_wav](https://www.tensorflow.org/api_docs/python/tf/audio/encode_wav)
@@ -72,3 +72,7 @@ UPDATE:
 	 * Tensorboard
 		 * [tensorboard callback](https://www.tensorflow.org/api_docs/python/tf/keras/callbacks/TensorBoard)
 		 * [getting started](https://www.tensorflow.org/tensorboard/get_started) with tensorboard
+	 * Callbacks
+		 * [callback list](https://www.tensorflow.org/api_docs/python/tf/keras/callbacks/CallbackList)
+		 * [tensorboard](https://www.tensorflow.org/api_docs/python/tf/keras/callbacks/TensorBoard)
+		 * [model checkpoint](https://www.tensorflow.org/api_docs/python/tf/keras/callbacks/ModelCheckpoint)
