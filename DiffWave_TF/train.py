@@ -193,7 +193,7 @@ def main():
 			os.listdir(checkpoint_dir)[-1] # assume lexicographic order with 4 digit epoch value
 		)
 		initial_epoch = int(
-			latest_checkpoint.lstrip(checkpoint_dir + "diff_wave-")
+			latest_checkpoint.lstrip(checkpoint_dir + "diff_wave-").replace(".h5", "")
 		)
 	else:
 		# No previous checkpoint exits. Create checkpoint directory and
@@ -208,9 +208,11 @@ def main():
 		# Load latest checkpoint to model (should have loss and
 		# optimizer state).
 		print(f"loading from checkpoint {latest_checkpoint}")
-		model = tf.keras.models.load_model(latest_checkpoint)
 
-		if not args.save_weights:
+		if args.save_weights:
+			model.load_weights(latest_checkpoint)
+		else:
+			model = tf.keras.models.load_model(latest_checkpoint)
 			# Load optimizer if model is a savedModel.
 			optimizer = model.optimizer
 	else:
@@ -218,7 +220,7 @@ def main():
 		# from scratch. Compile model.
 		model.compile(optimizer=optimizer, loss=loss,)# run_eagerly=True)
 
-	epochs = 1#3 # Hard coded. Set to 5 after run.
+	epochs = 3 # Hard coded. Set to 5 after run.
 
 	###################################################################
 	# Train the model.
@@ -250,18 +252,27 @@ def main():
 		val_loss = keras.losses.MeanAbsoluteError()
 
 		for epoch in range(initial_epoch, epochs):
+			epoch_loss_avg = keras.metrics.Mean()
+			epoch_val_loss_avg = keras.metrics.Mean()
+
 			# Step through training data.
 			for train in train_dataset:
-				step(train, model, optimizer, loss, params, True)
+				step(
+					train, model, optimizer, loss, params, 
+					epoch_loss_avg, True
+				)
 
 			# Step through validation data.
 			for valid in valid_dataset:
-				step(valid, model, optimizer, val_loss, params)
+				step(
+					valid, model, optimizer, val_loss, params, 
+					epoch_val_loss_avg
+				)
 
 			# End of epoch.
-			train_loss_results.append(loss.result())
-			valid_loss_results.append(val_loss.result())
-			print(f"Epoch {epoch + 1}/{epochs} loss: {loss.result()}, val_loss: {val_loss.result()}")
+			train_loss_results.append(epoch_loss_avg.result())
+			valid_loss_results.append(epoch_val_loss_avg.result())
+			print(f"Epoch {epoch + 1}/{epochs} loss: {epoch_loss_avg.result():4f}, val_loss: {epoch_loss_avg.result():4f}")
 
 		# Save and load the model (use SavedModel format).
 		model.save('diff_wave') # default format is SavedModel for Tf 2.X
@@ -285,7 +296,7 @@ def main():
 	exit(0)
 
 
-def step(data, model, optimizer, loss_fn, params, training=None):
+def step(data, model, optimizer, loss_fn, params, metrics, training=None):
 	# Unpack data.
 	audio, mel = data
 	N, T = audio.shape
@@ -310,22 +321,19 @@ def step(data, model, optimizer, loss_fn, params, training=None):
 			predicted = model.call((noisy_audio, t, mel), training=training)
 			# loss = loss(noise, tf.squeeze(predicted, 1)) # Original
 			loss = loss_fn(noise, tf.squeeze(predicted, -1))
+
+		# Compute gradients.
+		# trainable_vars = model.trainable_variables
+		gradients = tape.gradient(loss, model.trainable_variables)
+
+		# Update weights.
+		optimizer.apply_gradients(zip(gradients, model.trainable_variables))
 	else:
 		predicted = model.call((noisy_audio, t, mel), training=training)
 		loss = loss_fn(noise, tf.squeeze(predicted, -1))
-
-	# Compute gradients.
-	# trainable_vars = model.trainable_variables
-	gradients = tape.gradient(loss, model.trainable_vars)
-
-	# Update weights.
-	optimizer.apply_gradients(zip(gradients, model.trainable_vars))
-
-	# Update metrics (loss).
-	loss_fn.update_state(
-		# noise, tf.squeeze(predicted, 1) # Original
-		noise, tf.squeeze(predicted, -1)
-	)
+	
+	# Update metrics (avg loss.
+	metrics.update_state(loss)
 
 
 if __name__ == "__main__":

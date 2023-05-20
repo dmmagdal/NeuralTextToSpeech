@@ -28,7 +28,9 @@ Description: DiffWave is a Diffusion vocoder used with neural text to speech mod
 				 * from_config(cls, config) uses the returned config from get_config to create a new object. By default, this function will use the config as initialization kwargs (return cls(\*\*config)).
 			 2. Pass the object to the custom_objects argument when loading the model. The argument must be a dictionary mapping the string class name to the Python class. E.g. tf.keras.models.load_model(path, custom_objects={'CustomLayer': CustomLayer})
 	 * When you load a SavedModel in Python, all tf.Variable attributes, tf.function-decorated methods, and tf.Modules are restored in the same object structure as the original saved tf.Module ([documentation](https://www.tensorflow.org/guide/saved_model#loading_and_using_a_custom_model), [serialization documentation](https://github.com/tensorflow/community/blob/master/rfcs/20190509-keras-saved-model.md#serialization-details)).
-	 	 * The SavedModel format is not the same as tf.keras.Model. This means that some functions like call(), predict(), and summary() still work just fine, but other functions like train_step(), compute_loss(), and fit() are not available to use once loaded. This means that in order to retrain or finetune a model loaded from SavedModel, a custom training loop must be used instead of model.fit() + model.train_step()/model.valid_step(). In addition, model attriutes (ie self.params or self.is_conditional) are not accessible from the SavedModel format since they were saved in the sub-classed tf.keras.Model class (supposedly, you can access variables that were declared tf.Variable() inside the SavedModel).
+		 * The SavedModel format is not the same as tf.keras.Model. This means that some functions like call(), predict(), and summary() still work just fine, but other functions like train_step(), compute_loss(), and fit() are not available to use once loaded. This means that in order to retrain or finetune a model loaded from SavedModel, a custom training loop must be used instead of model.fit() + model.train_step()/model.valid_step(). In addition, model attriutes (ie self.params or self.is_conditional) are not accessible from the SavedModel format since they were saved in the sub-classed tf.keras.Model class (supposedly, you can access variables that were declared tf.Variable() inside the SavedModel).
+		 * Another note about SavedModels, because they require a custom training loop outside of Model.train_step(), there is a crucial caveat regarding resources on the host system. Model.fit() has optimizations built in that allow it to be more memory efficient. Custom training loops, while still being written in tensorflow, don't have those optimizations. Hence, there is a chance of OOM'ing on a machine with smaller resources
+			 * Currently, training will not OOM with Model.fit() but will OOM on a custom training loop on my 2060 SUPER (8GB VRAM).
 
 
 ### TODO List (for V1 release)
@@ -60,6 +62,7 @@ UPDATE:
 	 * Customize Training
 		 * [customize what happens in model.fit()](https://www.tensorflow.org/guide/keras/customizing_what_happens_in_fit)
 		 * [writing a training loop from scratch](https://www.tensorflow.org/guide/keras/writing_a_training_loop_from_scratch)
+		 * [custom training walkthrough](https://www.tensorflow.org/tutorials/customization/custom_training_walkthrough)
 	 * Model Checkpoints, Saving, & Loading
 		 * [checkpoint callback](https://www.tensorflow.org/api_docs/python/tf/keras/callbacks/ModelCheckpoint)
 		 * [training checkpoints](https://www.tensorflow.org/guide/checkpoint)
