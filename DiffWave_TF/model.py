@@ -63,11 +63,14 @@ class DiffusionEmbedding(layers.Layer):
 
 
 	def _lerp_embedding(self, t):
-		low_idx = tf.math.floor(t)
-		high_idx = tf.math.ceil(t)
-		low = self.embedding[low_idx]
-		high = self.embedding[high_idx]
-		return low + (high - low) * (t - low_idx)
+		low_idx = tf.cast(tf.math.floor(t), dtype=tf.int32)
+		high_idx = tf.cast(tf.math.ceil(t), dtype=tf.int32)
+		# low = self.embedding[low_idx] # Original
+		# high = self.embedding[high_idx] # Original
+		low = tf.gather(self.embedding, low_idx)
+		high = tf.gather(self.embedding, high_idx)
+		# return low + (high - low) * (t - low_idx) # Original
+		return low + (high - low) * (t - tf.cast(low_idx, dtype=tf.float32))
 
 
 	def _build_embedding(self, max_steps):
