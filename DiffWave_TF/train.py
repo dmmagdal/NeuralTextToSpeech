@@ -47,7 +47,7 @@ def main():
 		tf.TensorSpec(shape=(None,), dtype=tf.float32),		# audio
 		tf.TensorSpec(
 			shape=(None, params.n_mels), dtype=tf.float32
-		),													# mel
+		)													# mel
 	)
 	if params.unconditional:
 		# Output signature is different if using unconditional model.
@@ -118,6 +118,7 @@ def main():
 		output_signature=signature
 	)
 
+	train_dataset = train_dataset.take(100)
 	train_dataset = train_dataset.batch(params.batch_size, drop_remainder=True)
 	train_dataset = train_dataset.prefetch(tf.data.AUTOTUNE)
 	valid_dataset = valid_dataset.batch(params.batch_size, drop_remainder=True)
@@ -136,6 +137,13 @@ def main():
 	# Initialize model.
 	model = DiffWave(params)
 
+	# Build the model. Don't forget to include batch dim in the input
+	# shape.
+	input_shape = ((None, None,), (None,), (None, None, params.n_mels))
+	input_shape = [list(shape) for shape in input_shape]
+	model.build(input_shape)
+	model.summary()
+
 	# Compute the number of epochs from max_steps (1 step = 1 batch).
 	if args.max_steps is not None:
 		steps_per_epoch = train_data.__len__() / params.batch_size
@@ -144,7 +152,6 @@ def main():
 	else:
 		epochs = 1
 		print(f"Training DiffWave vocoder for 1 epoch at batch size {params.batch_size}")
-
 
 	###################################################################
 	# Initialize callbacks.
@@ -249,7 +256,6 @@ def main():
 		# Keep for plotting.
 		train_loss_results = []
 		valid_loss_results = []
-		val_loss = keras.losses.MeanAbsoluteError()
 
 		for epoch in range(initial_epoch, epochs):
 			epoch_loss_avg = keras.metrics.Mean()
@@ -258,23 +264,29 @@ def main():
 			# Step through training data.
 			for train in train_dataset:
 				step(
-					train, model, optimizer, loss, params, 
-					epoch_loss_avg, True
+					# train, model, optimizer, loss, params, 
+					train, model, loss, params, 
+					epoch_loss_avg, training=True
 				)
 
 			# Step through validation data.
 			for valid in valid_dataset:
 				step(
-					valid, model, optimizer, val_loss, params, 
+					# valid, model, optimizer, loss, params, 
+					valid, model, loss, params, 
 					epoch_val_loss_avg
 				)
 
 			# End of epoch.
 			train_loss_results.append(epoch_loss_avg.result())
 			valid_loss_results.append(epoch_val_loss_avg.result())
-			print(f"Epoch {epoch + 1}/{epochs} loss: {epoch_loss_avg.result():4f}, val_loss: {epoch_loss_avg.result():4f}")
+			print(f"Epoch {epoch + 1}/{epochs} loss: {epoch_loss_avg.result():.4f}, val_loss: {epoch_val_loss_avg.result():.4f}")
+			# print("Epoch {:3d}/{:3d} loss: {:4f}, val_loss: {:4f}".format(epoch + 1, epochs, epoch_loss_avg.result(), epoch_val_loss_avg.result()))
+
+			callbacks.on_epoch_end(epoch)
 
 		# Save and load the model (use SavedModel format).
+		model.summary()
 		model.save('diff_wave') # default format is SavedModel for Tf 2.X
 		loaded_model = keras.models.load_model('diff_wave')
 
@@ -296,7 +308,9 @@ def main():
 	exit(0)
 
 
-def step(data, model, optimizer, loss_fn, params, metrics, training=None):
+@tf.function()
+# def step(data, model, optimizer, loss_fn, params, metrics, training=None):
+def step(data, model, loss_fn, params, metrics, training=None):
 	# Unpack data.
 	audio, mel = data
 	N, T = audio.shape
@@ -327,13 +341,15 @@ def step(data, model, optimizer, loss_fn, params, metrics, training=None):
 		gradients = tape.gradient(loss, model.trainable_variables)
 
 		# Update weights.
+		optimizer = model.optimizer
 		optimizer.apply_gradients(zip(gradients, model.trainable_variables))
 	else:
 		predicted = model.call((noisy_audio, t, mel), training=training)
 		loss = loss_fn(noise, tf.squeeze(predicted, -1))
 	
-	# Update metrics (avg loss.
-	metrics.update_state(loss)
+	# Update metrics (avg loss).
+	if metrics is not None:
+		metrics.update_state(loss)
 
 
 if __name__ == "__main__":

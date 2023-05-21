@@ -30,7 +30,11 @@ Description: DiffWave is a Diffusion vocoder used with neural text to speech mod
 	 * When you load a SavedModel in Python, all tf.Variable attributes, tf.function-decorated methods, and tf.Modules are restored in the same object structure as the original saved tf.Module ([documentation](https://www.tensorflow.org/guide/saved_model#loading_and_using_a_custom_model), [serialization documentation](https://github.com/tensorflow/community/blob/master/rfcs/20190509-keras-saved-model.md#serialization-details)).
 		 * The SavedModel format is not the same as tf.keras.Model. This means that some functions like call(), predict(), and summary() still work just fine, but other functions like train_step(), compute_loss(), and fit() are not available to use once loaded. This means that in order to retrain or finetune a model loaded from SavedModel, a custom training loop must be used instead of model.fit() + model.train_step()/model.valid_step(). In addition, model attriutes (ie self.params or self.is_conditional) are not accessible from the SavedModel format since they were saved in the sub-classed tf.keras.Model class (supposedly, you can access variables that were declared tf.Variable() inside the SavedModel).
 		 * Another note about SavedModels, because they require a custom training loop outside of Model.train_step(), there is a crucial caveat regarding resources on the host system. Model.fit() has optimizations built in that allow it to be more memory efficient. Custom training loops, while still being written in tensorflow, don't have those optimizations. Hence, there is a chance of OOM'ing on a machine with smaller resources
-			 * Currently, training will not OOM with Model.fit() but will OOM on a custom training loop on my 2060 SUPER (8GB VRAM).
+			 * Currently, training will not OOM with Model.fit() but will OOM on a custom training loop on my 2060 SUPER (8GB VRAM). The only way to not OOM on the custom training loop that I've seen is by wrapping the code/function with `@tf.function` to run that code in graph execution mode.
+ * About eager vs graph execution:
+	 * Tensorflow runs in eager execution by default.
+	 * To run code in graph execution, use the `@tf.function` decorator to the top of the function.
+	 * In `tf.keras.Model.compile()`, the `run_eagerly` argument details whether the model is wrapped in `tf.function`. By default, that value is False (`tf.function` wraps around the model code, and the model is run in graph execution). When the value is set to True, `tf.function` is NOT wrapped around the model and the model code is run in eager execution.
 
 
 ### TODO List (for V1 release)
@@ -79,3 +83,5 @@ UPDATE:
 		 * [callback list](https://www.tensorflow.org/api_docs/python/tf/keras/callbacks/CallbackList)
 		 * [tensorboard](https://www.tensorflow.org/api_docs/python/tf/keras/callbacks/TensorBoard)
 		 * [model checkpoint](https://www.tensorflow.org/api_docs/python/tf/keras/callbacks/ModelCheckpoint)
+	 * Graph vs Eager Execution
+		 * [introduction to graphs and tf.function](https://www.tensorflow.org/guide/intro_to_graphs)
