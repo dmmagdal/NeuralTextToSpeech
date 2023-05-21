@@ -142,6 +142,7 @@ def main():
 	input_shape = ((None, None,), (None,), (None, None, params.n_mels))
 	input_shape = [list(shape) for shape in input_shape]
 	model.build(input_shape)
+	model.compute_output_shape(input_shape)
 	model.summary()
 
 	# Compute the number of epochs from max_steps (1 step = 1 batch).
@@ -264,17 +265,14 @@ def main():
 			# Step through training data.
 			for train in train_dataset:
 				step(
-					# train, model, optimizer, loss, params, 
-					train, model, loss, params, 
-					epoch_loss_avg, training=True
+					train, model, loss, params, epoch_loss_avg, 
+					training=True
 				)
 
 			# Step through validation data.
 			for valid in valid_dataset:
 				step(
-					# valid, model, optimizer, loss, params, 
-					valid, model, loss, params, 
-					epoch_val_loss_avg
+					valid, model, loss, params, epoch_val_loss_avg
 				)
 
 			# End of epoch.
@@ -309,7 +307,6 @@ def main():
 
 
 @tf.function()
-# def step(data, model, optimizer, loss_fn, params, metrics, training=None):
 def step(data, model, loss_fn, params, metrics, training=None):
 	# Unpack data.
 	audio, mel = data
