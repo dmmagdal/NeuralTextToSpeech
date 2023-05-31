@@ -220,7 +220,8 @@ def main():
 		if args.save_weights:
 			model.load_weights(latest_checkpoint)
 		else:
-			model = tf.keras.models.load_model(latest_checkpoint)
+			# model = tf.keras.models.load_model(latest_checkpoint)
+			model = tf.saved_model.load(latest_checkpoint)
 			# Load optimizer if model is a savedModel.
 			optimizer = model.optimizer
 	else:
@@ -248,11 +249,11 @@ def main():
 	else:
 		# Compile callback list if using custom train loop/SavedModel
 		# format.
-		callbacks = keras.callbacks.CallbackList(
-			callback_list, add_history=True, model=model
-		)
-		logs = {}
-		callbacks.on_train_begin(logs=logs)
+		# callbacks = keras.callbacks.CallbackList(
+		# 	callback_list, add_history=True, model=model
+		# )
+		# logs = {}
+		# callbacks.on_train_begin(logs=logs)
 
 		# Keep for plotting.
 		train_loss_results = []
@@ -281,7 +282,9 @@ def main():
 			print(f"Epoch {epoch + 1}/{epochs} loss: {epoch_loss_avg.result():.4f}, val_loss: {epoch_val_loss_avg.result():.4f}")
 			# print("Epoch {:3d}/{:3d} loss: {:4f}, val_loss: {:4f}".format(epoch + 1, epochs, epoch_loss_avg.result(), epoch_val_loss_avg.result()))
 
-			callbacks.on_epoch_end(epoch)
+			# callbacks.on_epoch_end(epoch)
+			for callback in callback_list:
+				callback.on_epoch_end(epoch)
 
 		# Save and load the model (use SavedModel format).
 		model.summary()
