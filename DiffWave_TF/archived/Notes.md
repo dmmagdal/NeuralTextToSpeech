@@ -1,0 +1,4 @@
+# Notes
+
+ * Originally, `train.py` was used to train the sub-classed `tf.keras.Model` Diffwave model defined in `model.py`. Issues with saving and loading the model from handling multiple inputs and the different shapes of those inputs forced me to experiment with using the Functional API from Tensorflow. `train_functional.py` is the same as `train.py` in that it takes arguments for training the model. See all additional caveats between using the sub-classed `tf.keras.Model` and Functional API in tensorflow in the `README.md` for this model.
+ * The `train.py` in the main folder for the model is based around the `train_functional.py` in this folder.

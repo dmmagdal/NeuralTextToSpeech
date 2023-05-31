@@ -10,7 +10,7 @@ import tensorflow as tf
 from tensorflow import keras
 from tqdm import tqdm
 from data import Data
-from functional import getDiffwave
+from model import DiffWave
 from params import params
 
 
@@ -27,8 +27,8 @@ def main():
 		help='use 16-bit floating point operations for training')
 	parser.add_argument('--resume_training', action='store_true', default=False,
 		help='resume from latest checkpoint')
-	# parser.add_argument('--save_weights', action='store_true', default=False,
-	# 	help='use and save weights of model when training')
+	parser.add_argument('--save_weights', action='store_true', default=False,
+		help='use and save weights of model when training')
 	args = parser.parse_args()
 
 	###################################################################
@@ -135,10 +135,14 @@ def main():
 	loss = keras.losses.MeanAbsoluteError()
 
 	# Initialize model.
-	model = getDiffwave(params)
+	model = DiffWave(params)
 
 	# Build the model. Don't forget to include batch dim in the input
 	# shape.
+	input_shape = ((None, None,), (None,), (None, None, params.n_mels))
+	input_shape = [list(shape) for shape in input_shape]
+	model.build(input_shape)
+	model.compute_output_shape(input_shape)
 	model.summary()
 
 	# Compute the number of epochs from max_steps (1 step = 1 batch).
@@ -171,6 +175,8 @@ def main():
 	# Checkpoint callback.
 	checkpoint_dir = os.path.join(callback_logdir, "checkpoints/")
 	checkpoint_save = "diff_wave-{epoch:04d}"
+	if args.save_weights:
+		checkpoint_save += ".h5"
 	checkpoint_log = os.path.join(
 		checkpoint_dir, checkpoint_save
 	)
@@ -178,7 +184,7 @@ def main():
 		checkpoint_log,
 		# monitor="val_loss", # Default. Can change to regular "loss"
 		# save_best_only=True,
-		save_weights_only=False,#args.save_weights,
+		save_weights_only=args.save_weights,
 		save_freq="epoch",
 	) 
 	callback_list.append(checkpoint_callback)
@@ -192,10 +198,10 @@ def main():
 	if args.resume_training and os.path.exists(checkpoint_dir) and len(os.listdir(checkpoint_dir)) > 0:
 		latest_checkpoint = os.path.join(
 			checkpoint_dir,
-			sorted(os.listdir(checkpoint_dir))[-1] # assume lexicographic order with 4 digit epoch value
+			os.listdir(checkpoint_dir)[-1] # assume lexicographic order with 4 digit epoch value
 		)
 		initial_epoch = int(
-			latest_checkpoint.lstrip(checkpoint_dir + "diff_wave-")#.replace(".h5", "")
+			latest_checkpoint.lstrip(checkpoint_dir + "diff_wave-").replace(".h5", "")
 		)
 	else:
 		# No previous checkpoint exits. Create checkpoint directory and
@@ -210,73 +216,94 @@ def main():
 		# Load latest checkpoint to model (should have loss and
 		# optimizer state).
 		print(f"loading from checkpoint {latest_checkpoint}")
-		model = tf.keras.models.load_model(latest_checkpoint)
 
-		# Load optimizer if model is a savedModel.
-		optimizer = model.optimizer
+		if args.save_weights:
+			model.load_weights(latest_checkpoint)
+		else:
+			# model = tf.keras.models.load_model(latest_checkpoint)
+			model = tf.saved_model.load(latest_checkpoint)
+			# Load optimizer if model is a savedModel.
+			optimizer = model.optimizer
 	else:
 		# There is no latest checkpoint. The model is being trained
 		# from scratch. Compile model.
 		model.compile(optimizer=optimizer, loss=loss,)# run_eagerly=True)
 
+	epochs = 3 # Hard coded. Set to 5 after run.
+
 	###################################################################
 	# Train the model.
 	###################################################################
 
-	# Compile callback list if using custom train loop/SavedModel
-	# format.
-	callbacks = keras.callbacks.CallbackList(
-		callback_list, add_history=True, model=model
-	)
-	logs = {}
-	callbacks.on_train_begin(logs=logs)
+	if args.save_weights:
+		# Train model.
+		history = model.fit(
+			train_dataset, 
+			validation_data=valid_dataset, 
+			epochs=epochs,
+			# callbacks=[tensorboard_callback, checkpoint_callback],
+			callbacks=callback_list,
+			initial_epoch=initial_epoch
+		)
+		model.summary()
+	else:
+		# Compile callback list if using custom train loop/SavedModel
+		# format.
+		# callbacks = keras.callbacks.CallbackList(
+		# 	callback_list, add_history=True, model=model
+		# )
+		# logs = {}
+		# callbacks.on_train_begin(logs=logs)
 
-	# Keep for plotting.
-	train_loss_results = []
-	valid_loss_results = []
+		# Keep for plotting.
+		train_loss_results = []
+		valid_loss_results = []
 
-	for epoch in range(initial_epoch, epochs):
-		epoch_loss_avg = keras.metrics.Mean()
-		epoch_val_loss_avg = keras.metrics.Mean()
+		for epoch in range(initial_epoch, epochs):
+			epoch_loss_avg = keras.metrics.Mean()
+			epoch_val_loss_avg = keras.metrics.Mean()
 
-		# Step through training data.
-		for train in train_dataset:
-			step(
-				train, model, loss, params, epoch_loss_avg, 
-				training=True
-			)
+			# Step through training data.
+			for train in train_dataset:
+				step(
+					train, model, loss, params, epoch_loss_avg, 
+					training=True
+				)
 
-		# Step through validation data.
-		for valid in valid_dataset:
-			step(
-				valid, model, loss, params, epoch_val_loss_avg
-			)
+			# Step through validation data.
+			for valid in valid_dataset:
+				step(
+					valid, model, loss, params, epoch_val_loss_avg
+				)
 
-		# End of epoch.
-		train_loss_results.append(epoch_loss_avg.result())
-		valid_loss_results.append(epoch_val_loss_avg.result())
-		print(f"Epoch {epoch + 1}/{epochs} loss: {epoch_loss_avg.result():.4f}, val_loss: {epoch_val_loss_avg.result():.4f}")
-		
-		callbacks.on_epoch_end(epoch)
+			# End of epoch.
+			train_loss_results.append(epoch_loss_avg.result())
+			valid_loss_results.append(epoch_val_loss_avg.result())
+			print(f"Epoch {epoch + 1}/{epochs} loss: {epoch_loss_avg.result():.4f}, val_loss: {epoch_val_loss_avg.result():.4f}")
+			# print("Epoch {:3d}/{:3d} loss: {:4f}, val_loss: {:4f}".format(epoch + 1, epochs, epoch_loss_avg.result(), epoch_val_loss_avg.result()))
 
-	# Save and load the model (use SavedModel format).
-	model.summary()
-	model.save('diff_wave') # default format is SavedModel for Tf 2.X
-	loaded_model = keras.models.load_model('diff_wave')
+			# callbacks.on_epoch_end(epoch)
+			for callback in callback_list:
+				callback.on_epoch_end(epoch)
 
-	# Use loaded model summary to confirm model matches.
-	loaded_model.summary()
+		# Save and load the model (use SavedModel format).
+		model.summary()
+		model.save('diff_wave') # default format is SavedModel for Tf 2.X
+		loaded_model = keras.models.load_model('diff_wave')
 
-	items = list(valid_dataset.take(1).as_numpy_iterator())[0]
-	audio, mel = items
-	N, T = audio.shape
-	t = tf.random.uniform([N], 0, len(params.noise_schedule))
-	t = tf.cast(tf.round(t), dtype=tf.int32)
-	prediction = loaded_model((audio, t, mel))
-	prediction = loaded_model.predict((audio, t, mel))
-	# prediction = loaded_model.call((audio, t, mel), training=False) # Doesnt work for some reason: due to some weird error: AttributeError: 'numpy.ndarray' object has no attribute '_keras_mask'
-	# loaded_model.train_step(items) # gave error due to input shape
-	prediction = loaded_model.predict_on_batch((audio, t, mel))
+		# Use loaded model summary to confirm model matches.
+		loaded_model.summary()
+
+		items = list(valid_dataset.take(1).as_numpy_iterator())[0]
+		audio, mel = items
+		N, T = audio.shape
+		t = tf.random.uniform([N], 0, len(params.noise_schedule))
+		t = tf.cast(tf.round(t), dtype=tf.int32)
+		prediction = loaded_model((audio, t, mel))
+		prediction = loaded_model.predict((audio, t, mel))
+		prediction = loaded_model.call((audio, t, mel))
+		# loaded_model.train_step(items) # gave error due to input shape
+		prediction = loaded_model.predict_on_batch((audio, t, mel))
 
 	# Exit the program.
 	exit(0)
