@@ -18,6 +18,12 @@ class DilatedConv1D(layers.Layer):
 		else:
 			padding = "same"
 
+		self.padding = padding
+		self.filters = filters
+		self.kernel_size = kernel_size
+		self.dilation = dilation
+		self.zero_init = zero_init
+
 		# Supposedly the equivalent of torch.nn.init.kaiming_normal_()
 		# in tensorflow as suggested by ChatGPT.
 		initializer = keras.initializers.VarianceScaling(
@@ -37,6 +43,18 @@ class DilatedConv1D(layers.Layer):
 		return self.conv(x)
 	
 
+	def get_config(self):
+		config = super().get_config()
+		config.update({
+			"filters": self.filters,
+			"kernel_size": self.kernel_size,
+			"padding": self.padding,
+			"dilation": self.dilation,
+			"zero_init": self.zero_init
+		})
+		return config
+	
+
 def silu(x):
 	return x * tf.math.sigmoid(x)
 	
@@ -44,6 +62,8 @@ def silu(x):
 class DiffusionEmbedding(layers.Layer):
 	def __init__(self, max_steps, **kwargs):
 		super(DiffusionEmbedding, self).__init__(**kwargs)
+		self.max_steps = max_steps
+
 		self.embedding = self._build_embedding(max_steps)
 		self.projection1 = layers.Dense(512)
 		self.projection2 = layers.Dense(512)
@@ -83,9 +103,19 @@ class DiffusionEmbedding(layers.Layer):
 		return table
 
 
+	def get_config(self):
+		config = super().get_config()
+		config.update({
+			"max_steps": self.max_steps
+		})
+		return config
+
+
 class SpectrogramUpsampler(layers.Layer):
 	def __init__(self, n_mels, **kwargs):
 		super(SpectrogramUpsampler, self).__init__(**kwargs)
+		self.n_mels = n_mels
+
 		self.conv1 = layers.Conv2DTranspose(
 			# 1, kernel_size=[3, 32], strides=[1, 16], padding="same" # Original
 			1, kernel_size=[32, 3], strides=[16, 1], padding="same"
@@ -108,9 +138,22 @@ class SpectrogramUpsampler(layers.Layer):
 		return x
 
 
+	def get_config(self):
+		config = super().get_config()
+		config.update({
+			"n_mels": self.n_mels
+		})
+		return config
+
+
 class ResidualBlock(layers.Layer):
 	def __init__(self, n_mels, residual_channels, dilation, uncond=False, **kwargs):
 		super(ResidualBlock, self).__init__(**kwargs)
+		self.n_mels = n_mels
+		self.residual_channels = residual_channels
+		self.dilation = dilation
+		self.uncond = uncond
+
 		self.dilated_conv = DilatedConv1D(
 			2 * residual_channels, 3, padding=dilation, 
 			dilation=dilation
@@ -154,6 +197,17 @@ class ResidualBlock(layers.Layer):
 		y = self.output_projection(y)
 		residual, skip = tf.split(y, 2, axis=-1)
 		return (x + residual) / sqrt(2.0), skip
+
+
+	def get_config(self):
+		config = super().get_config()
+		config.update({
+			"n_mels": self.n_mels,
+			"residual_channels": self.residual_channels,
+			"dilation": self.dilation,
+			"uncond": self.uncond
+		})
+		return config
 
 
 class DiffWave(keras.Model):
