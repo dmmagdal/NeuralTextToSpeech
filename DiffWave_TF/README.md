@@ -90,5 +90,6 @@ UPDATE:
 		 * [callback list](https://www.tensorflow.org/api_docs/python/tf/keras/callbacks/CallbackList)
 		 * [tensorboard](https://www.tensorflow.org/api_docs/python/tf/keras/callbacks/TensorBoard)
 		 * [model checkpoint](https://www.tensorflow.org/api_docs/python/tf/keras/callbacks/ModelCheckpoint)
+		 * [early stopping](https://www.tensorflow.org/api_docs/python/tf/keras/callbacks/EarlyStopping)
 	 * Graph vs Eager Execution
 		 * [introduction to graphs and tf.function](https://www.tensorflow.org/guide/intro_to_graphs)
