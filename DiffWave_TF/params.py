@@ -33,7 +33,7 @@ params = AttrDict(
 	n_fft = 1024,
 	hop_length = 256,		# Renamed myself from hop_samples
 	win_length = 1024,		# Added myself
-	crop_mel_frames = 62,	# Probably an error in paper.
+	crop_mel_frames = 62,	# Probably an error in paper. Original
 	f_min = 0,				# Added myself
 	f_max = 8000,			# Added myself
 
