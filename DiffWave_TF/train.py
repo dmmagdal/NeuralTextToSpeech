@@ -118,7 +118,6 @@ def main():
 		output_signature=signature
 	)
 
-	train_dataset = train_dataset.take(100)
 	train_dataset = train_dataset.batch(params.batch_size, drop_remainder=True)
 	train_dataset = train_dataset.prefetch(tf.data.AUTOTUNE)
 	valid_dataset = valid_dataset.batch(params.batch_size, drop_remainder=True)
