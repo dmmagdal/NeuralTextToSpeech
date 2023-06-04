@@ -40,7 +40,7 @@ Description: DiffWave is a Diffusion vocoder used with neural text to speech mod
 		 1. the raw audio signal (shape (None,)).
 		 2. the diffusion timestep (shape ()).
 		 3. the mel spectrogram signal (shape (None, n_mels)). This input is optional if using the unconditonal (or gtzan) model.
-	 * A sub-classed tf.keras.Model does not like to pass in multiple inputs to Model.call() (e.g. Model.call(input_1, input_2, input_3, training=None)). To pass in multiple inputs, they would have to be packaged in a tuple (Model.call((input_1, input_2, input_3), training=None)). Optional inputs could be passed in as part of the **kwargs after the training=None value (Model.call((input_1, input_2), training=None, input_3=None)). There is a problem with this though, it makes the model very hard to build (call Model.build()) and resume training or run inference on a saved model (use Model.call() with training=False or True). This created numerous errors, regardless of the save formats used (SavedModel, SavedModel with h5, and save weights with h5). This also applied to attempts at retraining or finetuning the model (both with Model.fit() and a custom training loop).
+	 * A sub-classed tf.keras.Model does not like to pass in multiple inputs to Model.call() (e.g. Model.call(input_1, input_2, input_3, training=None)). To pass in multiple inputs, they would have to be packaged in a tuple (Model.call((input_1, input_2, input_3), training=None)). Optional inputs could be passed in as part of the \*\*kwargs after the training=None value (Model.call((input_1, input_2), training=None, input_3=None)). There is a problem with this though, it makes the model very hard to build (call Model.build()) and resume training or run inference on a saved model (use Model.call() with training=False or True). This created numerous errors, regardless of the save formats used (SavedModel, SavedModel with h5, and save weights with h5). This also applied to attempts at retraining or finetuning the model (both with Model.fit() and a custom training loop).
 	 * Using the Functional API from tensorflow provides a lot more flexibility in terms of being able to work with multiple inputs to a model. Multiple inputs can be specified with tf.keras.layers.Layer.Input() layers. For the optional inputs, some conditional logic could be applied but note that will affect the input of the model (especially when you consider the different layers and inputs that are included in the conditional Diffwave model vs the unconditional Diffwave model). Working with the functional API has allowed the model to be built (Model.build()/Model.summary()), resume training (load from from SavedModel checkpoint and use Model.call(input, training=True) in custom training loop), and inference (Model.predict(), Model.predict_on_batch(), Model(); Model.call(input, training=False) does seem to have an issue which I'll debug later). The Functional API also requires the use of a custom training loop instead of defining Model.train_step() if required.
 
 
@@ -51,7 +51,7 @@ Description: DiffWave is a Diffusion vocoder used with neural text to speech mod
  	 [x] Train step
  	 [x] Validation step
  [x] Model checkpointing, saving, & loading
- [ ] Model resume training
+ [x] Model resume training
  [ ] Model inference
 UPDATE:
  * Eager execution of the model for training OOMs on GPU. On CPU, the model is able to train, but it is not at all viable for actual training.

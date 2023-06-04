@@ -256,6 +256,7 @@ def main():
 		valid_loss_results.append(epoch_val_loss_avg.result())
 		print(f"Epoch {epoch + 1}/{epochs} loss: {epoch_loss_avg.result():.4f}, val_loss: {epoch_val_loss_avg.result():.4f}")
 		
+		# All callbacks perform their end of epoch actions.
 		callbacks.on_epoch_end(epoch)
 
 	# Save and load the model (use SavedModel format).
@@ -274,7 +275,6 @@ def main():
 	prediction = loaded_model((audio, t, mel))
 	prediction = loaded_model.predict((audio, t, mel))
 	# prediction = loaded_model.call((audio, t, mel), training=False) # Doesnt work for some reason: due to some weird error: AttributeError: 'numpy.ndarray' object has no attribute '_keras_mask'
-	# loaded_model.train_step(items) # gave error due to input shape
 	prediction = loaded_model.predict_on_batch((audio, t, mel))
 
 	# Exit the program.
