@@ -50,9 +50,8 @@ Description: DiffWave is a Diffusion vocoder used with neural text to speech mod
 	 * Training on my Desktop (Nvidia 2060 SUPER 8GB) crashes roughly every 100+ epochs due to one reason or another. Root cause isn't clear other than possible memory issues (RAM or VRAM). It always fails when calling the `on_epoch_end()` function on the callback list.
 		 * Training started May 31, 2023 at 5:20 PM and ended June 17, 2023 at 11:15 AM.
 		 * Training was for 4 million steps at batch size of 4 (1,281 epochs).
-		 * Regarding the crashes, training had to be restarted 7 times (roughly every 2 to 3 days).
 		 * Each checkpoint (in SavedModel format) is 36.2MB large. Multiplied by the number of epochs for pretraining on the LJSpeech dataset (1,281 epochs) and the folder containing the checkpoints would be 42.8 GB of data. To reduce the overhead on GitHub (repos have size limits), only every 25th checkpoint is being kept. This brings the count down from 1,281 to 52 checkpoints saved (total storage is now 1.73 GB).
-		 * Training had to be resumed 8 times (not including initial start) due to interruptions.
+		 * Training had to be resumed 8 times (not including initial start) due to interruptions (roughly every 2 to 3 days).
 
 
 ### TODO List (for V1 release)
