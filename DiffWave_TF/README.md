@@ -52,6 +52,7 @@ Description: DiffWave is a Diffusion vocoder used with neural text to speech mod
 		 * Training was for 4 million steps at batch size of 4 (1,281 epochs).
 		 * Each checkpoint (in SavedModel format) is 36.2MB large. Multiplied by the number of epochs for pretraining on the LJSpeech dataset (1,281 epochs) and the folder containing the checkpoints would be 42.8 GB of data. To reduce the overhead on GitHub (repos have size limits), only every 25th checkpoint is being kept. This brings the count down from 1,281 to 52 checkpoints saved (total storage is now 1.73 GB).
 		 * Training had to be resumed 8 times (not including initial start) due to interruptions (roughly every 2 to 3 days).
+ * `.gitkeep` is an empty file added to the `/assets` folder in the model checkpoints to allow for github to keep track of the empty folders.
 
 
 ### TODO List (for V1 release)
