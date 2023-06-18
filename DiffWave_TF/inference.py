@@ -48,7 +48,6 @@ def predict(spectrogram=None, model_dir=None, params=None,
 				T.append(t + twiddle)
 				break
 	T = np.array(T, dtype=np.float32)
-	T = tf.convert_to_tensor(T, dtype=tf.float32)
 
 	if not params.unconditional:
 		if len(spectrogram.shape) == 2:# Expand rank 2 tensors by adding a batch dimension.
@@ -65,28 +64,29 @@ def predict(spectrogram=None, model_dir=None, params=None,
 		# audio = torch.randn(1, params.audio_len) # Original
 		audio = tf.random.normal((1, params.audio_len))
 		# noise_scale = torch.from_numpy(alpha_cum**0.5).float().unsqueeze(1) # Original
-		noise_scale = tf.expand_dims(
-			tf.convert_to_tensor(alpha_cum ** 0.5, dtype=tf.float32), 1
-		)
+	noise_scale = tf.expand_dims(
+		tf.convert_to_tensor(alpha_cum ** 0.5, dtype=tf.float32), 1
+	)
 
 	print(spectrogram.shape)
 	print(audio.shape)
-	exit()
+	# exit()
 
 	for n in range(len(alpha) - 1, -1, -1):
 		c1 = 1 / alpha[n] ** 0.5
 		c2 = beta[n] / (1 - alpha_cum[n]) ** 0.5
-		# audio = c1 * (audio - c2 * model(audio, torch.tensor([T[n]]), spectrogram).squeeze(1))
+		# audio = c1 * (audio - c2 * model(audio, torch.tensor([T[n]]), spectrogram).squeeze(1)) # Original
 		audio = c1 * tf.squeeze(
-			audio - c2 * model([audio, tf.convert_to_tensor([T[n]]), spectrogram]),
-			-1
+			audio - c2 * model(
+				[audio, tf.convert_to_tensor([T[n]]), spectrogram]
+			), -1
 		)
 		if n > 0:
-			# noise = torch.randn_like(audio)
+			# noise = torch.randn_like(audio) # Original
 			noise = tf.random.uniform((audio.shape))
 			sigma = ((1.0 - alpha_cum[n - 1]) / (1.0 - alpha_cum[n]) * beta[n]) ** 0.5
 			audio += sigma * noise
-		# audio = torch.clamp(audio, -1.0, 1.0)
+		# audio = torch.clamp(audio, -1.0, 1.0) # Original
 		audio = tf.clip_by_value(audio, -1.0, 1.0)
 
 	return audio, params.sample_rate
