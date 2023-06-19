@@ -11,6 +11,57 @@ from params import params
 from model import DiffWave
 
 
+def predict_by_slice(model, audio, T, spectrogram):
+	# Split the audio & spectrogram data into slices. This is because
+	# the model was trained on smaller slices (spectrogram had a length
+	# of params.crop_mel_frames (62) and audio had a length of
+	# params.hop_length x params.crop_mel_frames for the conditional
+	# model).
+	split_length = params.crop_mel_frames * params.hop_length
+	tensor_length = audio.shape[-1]
+
+	whole_count = tensor_length // split_length
+	remainder = tensor_length % split_length
+
+	audio_slices = tf.split(
+		audio[:, :split_length * whole_count], whole_count, axis=1,
+	)
+	spectrogram_slices = tf.split(
+		spectrogram[:, :params.crop_mel_frames * whole_count, :],
+		whole_count, axis=1
+	)
+
+	if remainder != 0:
+		audio_slices.append(
+			tf.slice(
+				audio, begin=[0, split_length * whole_count], 
+				size=[1, remainder]
+			)
+		)
+		spectrogram_slices.append(
+			tf.slice(
+				spectrogram, 
+				begin=[0, params.crop_mel_frames * whole_count, 0],
+				size=[1, remainder // params.hop_length, params.n_mels]
+			)
+		)
+
+	# Number of audio slices must match number of spectrogram slices.
+	assert len(audio_slices) == len(spectrogram_slices)
+
+	# Iterate through each slice and have the model perform inference.
+	# Concatenate the results to form a tensor of the same size as the
+	# input audio tensor.
+	output_slices = []
+	for audio_slice, spectrogram_slice in zip(audio_slices, spectrogram_slices):
+		output_slices.append(
+			model([audio_slice, T, spectrogram_slice])
+		)
+	output = tf.concat(output_slices, axis=1)
+
+	return output
+
+
 # @tf.function
 def predict(spectrogram=None, model_dir=None, params=None, 
 		fast_sampling=False):
@@ -44,7 +95,9 @@ def predict(spectrogram=None, model_dir=None, params=None,
 	for s in range(len(inference_noise_schedule)):
 		for t in range(len(training_noise_schedule) - 1):
 			if talpha_cum[t + 1] <= alpha_cum[s] <= talpha_cum[t]:
-				twiddle = (talpha_cum[t] ** 0.5 - alpha_cum[s] ** 0.5) / (talpha_cum[t] ** 0.5 - talpha_cum[t + 1] ** 0.5)
+				twiddle = (
+					talpha_cum[t] ** 0.5 - alpha_cum[s] ** 0.5
+				) / (talpha_cum[t] ** 0.5 - talpha_cum[t + 1] ** 0.5)
 				T.append(t + twiddle)
 				break
 	T = np.array(T, dtype=np.float32)
@@ -63,28 +116,36 @@ def predict(spectrogram=None, model_dir=None, params=None,
 	else:
 		# audio = torch.randn(1, params.audio_len) # Original
 		audio = tf.random.normal((1, params.audio_len))
-		# noise_scale = torch.from_numpy(alpha_cum**0.5).float().unsqueeze(1) # Original
+	# noise_scale = torch.from_numpy(alpha_cum**0.5).float().unsqueeze(1) # Original
 	noise_scale = tf.expand_dims(
-		tf.convert_to_tensor(alpha_cum ** 0.5, dtype=tf.float32), 1
+		tf.convert_to_tensor(alpha_cum ** 0.5, dtype=tf.float32), -1
 	)
-
-	print(spectrogram.shape)
-	print(audio.shape)
-	# exit()
 
 	for n in range(len(alpha) - 1, -1, -1):
 		c1 = 1 / alpha[n] ** 0.5
 		c2 = beta[n] / (1 - alpha_cum[n]) ** 0.5
 		# audio = c1 * (audio - c2 * model(audio, torch.tensor([T[n]]), spectrogram).squeeze(1)) # Original
-		audio = c1 * tf.squeeze(
-			audio - c2 * model(
-				[audio, tf.convert_to_tensor([T[n]]), spectrogram]
-			), -1
+		audio = c1 * (
+			audio - c2 * tf.squeeze(
+				model(
+					[audio, tf.convert_to_tensor([T[n]]), spectrogram],
+					training=False
+				), axis=-1
+			)
 		)
+		# audio = c1 * (
+		# 	audio - c2 * tf.squeeze(
+		# 		predict_by_slice(
+		# 			model, audio, tf.convert_to_tensor([T[n]]), spectrogram
+		# 		), 
+		# 		axis=-1
+		# 	)
+		# )
 		if n > 0:
 			# noise = torch.randn_like(audio) # Original
 			noise = tf.random.uniform((audio.shape))
-			sigma = ((1.0 - alpha_cum[n - 1]) / (1.0 - alpha_cum[n]) * beta[n]) ** 0.5
+			sigma = ((1.0 - alpha_cum[n - 1]) /
+				(1.0 - alpha_cum[n]) * beta[n]) ** 0.5
 			audio += sigma * noise
 		# audio = torch.clamp(audio, -1.0, 1.0) # Original
 		audio = tf.clip_by_value(audio, -1.0, 1.0)
@@ -132,12 +193,18 @@ def main():
 		spectrogram, model_dir, fast_sampling=args.fast,
 		params=params
 	)
-	tf.io.write_file(args.output, tf.audio.encode_wav(audio, sr))
+	tf.io.write_file(
+		args.output, tf.audio.encode_wav(
+			# tf.expand_dims(tf.squeeze(audio, 0), -1), sr
+			tf.transpose(audio), sr
+		)
+	)
 
 	# Exit the program.
 	exit(0)
 
 
 if __name__ == '__main__':
-	with tf.device('/cpu:0'):
-		main()
+	# with tf.device('/cpu:0'):
+	# 	main()
+	main()
