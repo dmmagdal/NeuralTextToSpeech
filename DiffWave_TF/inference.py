@@ -189,10 +189,15 @@ def main():
 
 	model_dir = "./diff_wave"
 
+	# Perform inference.
 	audio, sr = predict(
 		spectrogram, model_dir, fast_sampling=args.fast,
 		params=params
 	)
+
+	# Output audio to (wav) file. Note that audio is shape
+	# (1, audio_len) but must be shape (audio_len, 1) to encode to wav
+	# file.
 	tf.io.write_file(
 		args.output, tf.audio.encode_wav(
 			# tf.expand_dims(tf.squeeze(audio, 0), -1), sr
