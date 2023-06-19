@@ -1,5 +1,5 @@
 # save_tfa_model.py
-# Test whether one can save and load amodel that uses layers from 
+# Test whether one can save and load a model that uses layers from 
 # tensorflow addons.
 
 import tensorflow as tf

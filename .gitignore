@@ -1,5 +1,6 @@
 *.tar.bz2
 */LJSpeech-1.1/
+*/my_custom_model/
 */my_model/
 **/__pycache__/
 **/monotonic_align/__pycache__/
