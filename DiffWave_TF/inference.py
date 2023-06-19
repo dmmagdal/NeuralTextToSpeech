@@ -143,7 +143,7 @@ def predict(spectrogram=None, model_dir=None, params=None,
 		# )
 		if n > 0:
 			# noise = torch.randn_like(audio) # Original
-			noise = tf.random.uniform((audio.shape))
+			noise = tf.random.normal(audio.shape)
 			sigma = ((1.0 - alpha_cum[n - 1]) /
 				(1.0 - alpha_cum[n]) * beta[n]) ** 0.5
 			audio += sigma * noise
