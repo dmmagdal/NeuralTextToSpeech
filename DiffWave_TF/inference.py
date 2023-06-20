@@ -166,13 +166,14 @@ def main():
 		help='fast sampling procedure')
 	args = parser.parse_args()
 
+	max_wav_value = 32768.0
+
 	if args.spectrogram_path:
 		spectrogram = tf.convert_to_tensor(
 			np.load(args.spectrogram_path)
 		)
 	else:
 		# spectrogram = None
-		max_wav_value = 32768.0
 		stft = STFT(
 			filter_length=params.n_fft, 
 			frame_step=params.hop_length,
@@ -201,7 +202,8 @@ def main():
 	tf.io.write_file(
 		args.output, tf.audio.encode_wav(
 			# tf.expand_dims(tf.squeeze(audio, 0), -1), sr
-			tf.transpose(audio), sr
+			# tf.transpose(audio), sr
+			tf.expand_dims(tf.squeeze(audio, 0) * max_wav_value, -1), sr
 		)
 	)
 

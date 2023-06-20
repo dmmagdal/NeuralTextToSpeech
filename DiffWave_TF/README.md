@@ -53,17 +53,26 @@ Description: DiffWave is a Diffusion vocoder used with neural text to speech mod
 		 * Each checkpoint (in SavedModel format) is 36.2MB large. Multiplied by the number of epochs for pretraining on the LJSpeech dataset (1,281 epochs) and the folder containing the checkpoints would be 42.8 GB of data. To reduce the overhead on GitHub (repos have size limits), only every 25th checkpoint is being kept. This brings the count down from 1,281 to 52 checkpoints saved (total storage is now 1.73 GB).
 		 * Training had to be resumed 8 times (not including initial start) due to interruptions (roughly every 2 to 3 days).
  * `.gitkeep` is an empty file added to the `/assets` folder in the model checkpoints to allow for github to keep track of the empty folders.
+ * Inference notes:
+	 * Multiplying the normalized raw audio from Diffwave increases the volume (range is increased from [-1.0, 1.0] to 32768.0 x [-1.0, 1.0]). Using just the [-1.0, 1.0] range produces audio that is much "quieter".
 
 
 ### TODO List (for V1 release)
 
  [x] Verify model architecture
+
  [x] Finish and verify training loop
+
  	 [x] Train step
+
  	 [x] Validation step
+
  [x] Model checkpointing, saving, & loading
+
  [x] Model resume training
+
  [ ] Model inference
+
 UPDATE:
  * Eager execution of the model for training OOMs on GPU. On CPU, the model is able to train, but it is not at all viable for actual training.
  * Graph execution of the model for training actually works.
