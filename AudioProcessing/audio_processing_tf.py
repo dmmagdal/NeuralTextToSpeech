@@ -92,6 +92,10 @@ class STFT:
 		# the mel spectrogram to decibels.
 		mel_spec = dynamic_range_compression(mel_spec)
 
+		# Normalize.
+		mel_spec = (mel_spec - tf.math.reduce_mean(mel_spec)) /\
+			tf.math.reduce_std(mel_spec)
+
 		# Return the mel spectrogram.
 		return mel_spec
 
