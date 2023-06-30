@@ -55,6 +55,16 @@ Description: DiffWave is a Diffusion vocoder used with neural text to speech mod
  * `.gitkeep` is an empty file added to the `/assets` folder in the model checkpoints to allow for github to keep track of the empty folders.
  * Inference notes:
 	 * Multiplying the normalized raw audio from Diffwave increases the volume (range is increased from [-1.0, 1.0] to 32768.0 x [-1.0, 1.0]). Using just the [-1.0, 1.0] range produces audio that is much "quieter".
+	 * Disregard the above note. There are some things about how tensorflow and pytorch handle audio that is very important.
+		 * Tensorflow reads/writes audio from/to wav in the range of [-1.0, 1.0] (see the [encode_wav](https://www.tensorflow.org/versions/r2.7/api_docs/python/tf/audio/encode_wav) and [decode_wav](https://www.tensorflow.org/versions/r2.7/api_docs/python/tf/audio/decode_wav) documentation from tensorflow). The same applies for the way pytorch reads/writes the audio for its own input ([torchaudio documentation](https://pytorch.org/audio/stable/backend.html)).
+		 * Given that tensorflow and pytorch handle the audio scaling for you, there is not need to divide the loaded audio tensor by a `max_wav_value`.
+	 * For preprocessing the audio, the original implementation does the following steps:
+		 * Load wav audio to tensor
+		 * Process audio tensor into mel spectrograms
+		 * Convert the mel spectrogram tensor to decibels and normalize
+		 * Take the normalized tensor and scale it down to values in the range [0.0, 1.0]. This is the input mel spectrogram used in training the model.
+	 * In the inference stage, the original implementation takes the preprocessed mel spectrograms (scaled down version) and passes it through the model along with a random noise wav audio tensor for denoising/vocoding by the model.
+		 * That random noise audio tensor is iteratively denoised by the model until it's expected end result is supposed to be the raw audio of the input mel spectrogram.
 
 
 ### TODO List (for V1 release)
