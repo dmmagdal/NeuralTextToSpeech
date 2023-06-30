@@ -133,14 +133,6 @@ def predict(spectrogram=None, model_dir=None, params=None,
 				), axis=-1
 			)
 		)
-		# audio = c1 * (
-		# 	audio - c2 * tf.squeeze(
-		# 		predict_by_slice(
-		# 			model, audio, tf.convert_to_tensor([T[n]]), spectrogram
-		# 		), 
-		# 		axis=-1
-		# 	)
-		# )
 		if n > 0:
 			# noise = torch.randn_like(audio) # Original
 			noise = tf.random.normal(audio.shape)

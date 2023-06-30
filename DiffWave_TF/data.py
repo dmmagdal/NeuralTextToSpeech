@@ -103,8 +103,7 @@ class Data:
 					sampling_rate, self.stft.sampling_rate
 				)
 			)
-		audio_norm = audio / self.max_wav_value
-		audio_norm = tf.expand_dims(audio_norm, 0)
+		audio_norm = tf.expand_dims(audio, 0)
 
 		# For unconditional dataset, there is no mel.
 		if self.params.unconditional:
