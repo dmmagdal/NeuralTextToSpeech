@@ -92,7 +92,7 @@ def main():
 		filter_length, hop_length, win_length, n_mel_channels, 
 		sampling_rate, mel_fmin, mel_fmax
 	)
-	pytorch_audio = torch.FloatTensor(scipy_audio.astype(np.float32))
+	pytorch_audio = torch.FloatTensor(scipy_audio.astype(np.float32)) # Loading audio with scipy requires scaling values to [-1.0, 1.0] by dividing by max_wav_value
 	audio_norm = pytorch_audio / max_wav_value
 	audio_norm = audio_norm.unsqueeze(0)
 	audio_norm = torch.autograd.Variable(audio_norm, requires_grad=False)
@@ -161,8 +161,9 @@ def main():
 	tf_STFT = STFT(
 		filter_length, win_length, hop_length, n_mel_channels, sampling_rate, mel_fmin, mel_fmax
 	)
-	tf_audio_norm = tf_audio / max_wav_value
+	# tf_audio_norm = tf_audio / max_wav_value
 	# tf_audio_norm = tf.expand_dims(tf_audio_norm, 0)
+	tf_audio_norm = tf_audio # Loading audio with tensorflow does not require any scaling. Values are read in with range [-1.0, 1.0]
 	tf_stft_melspec = tf_STFT.mel_spectrogram(tf_audio_norm)
 
 	tf_stft_melspec = tf.transpose(tf_stft_melspec, [1, 0])

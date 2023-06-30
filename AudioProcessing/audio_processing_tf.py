@@ -88,7 +88,8 @@ class STFT:
 		)
 
 		# Apply spectral normalization through the dynamic range
-		# compression normalization.
+		# compression normalization. Apparently this function converts
+		# the mel spectrogram to decibels.
 		mel_spec = dynamic_range_compression(mel_spec)
 
 		# Return the mel spectrogram.
