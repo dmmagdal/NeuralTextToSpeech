@@ -1,5 +1,6 @@
 # load_audio.py
 
+import torchaudio
 import tensorflow as tf
 import librosa
 from scipy.io.wavfile import read
@@ -27,5 +28,15 @@ def load_wav_tf(full_path):
 def load_wav_librosa(full_path):
 	# Read with librosa.
 	audio, sampling_rate = librosa.load(full_path)
+
+	return audio, sampling_rate
+
+
+def load_wav_torchaudio(full_path):
+	# Read with torchaudio.
+	audio, sampling_rate = torchaudio.load(full_path)
+
+	# Extra step required to reduce the dims.
+	audio = audio.squeeze()
 
 	return audio, sampling_rate

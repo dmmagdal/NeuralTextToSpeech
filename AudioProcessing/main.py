@@ -7,8 +7,11 @@
 import numpy as np
 import tensorflow as tf
 import torch
+import torchaudio
+import torchaudio.transforms as TT
 from layers import TacotronSTFT
 from load_audio import load_wav_scipy, load_wav_librosa, load_wav_tf
+from load_audio import load_wav_torchaudio
 from process_audio import get_mel_librosa, get_mel_spec_tf
 from audio_processing_tf import STFT
 
@@ -41,15 +44,21 @@ def main():
 	# Tensorflow.
 	tf_audio, tf_sr = load_wav_tf(path)
 	print(f"Tensorflow read shape: {tf_audio.shape}")
+
+	# Torch(audio).
+	t_audio, t_sr = load_wav_torchaudio(path)
+	print(f"Torch(audio) read shape: {t_audio.shape}")
 	print("-" * 32)
 
 	# All data is read to the same shape.
 	shape_match1 = scipy_audio.shape == librosa_audio.shape
 	shape_match2 = scipy_audio.shape == tf_audio.shape
+	shape_match3 = scipy_audio.shape == t_audio.shape
 
 	# All sampling rates are the same.
 	sr_match1 = scipy_sr == librosa_sr
 	sr_match2 = scipy_sr == tf_sr
+	sr_match3 = scipy_sr == t_sr
 
 	# All data arrays (converted to numpy) are the same.
 	data_match1 = np.array_equal(scipy_audio, librosa_audio)
@@ -57,8 +66,8 @@ def main():
 	data_match3 = np.array_equal(scipy_audio, tf_audio.numpy())
 
 	# Output comparisons.
-	print(f"All audio shapes match: {shape_match1 and shape_match2}")
-	print(f"All sampling rates match: {sr_match1 and sr_match2}")
+	print(f"All audio shapes match: {shape_match1 and shape_match2 and shape_match3}")
+	print(f"All sampling rates match: {sr_match1 and sr_match2 and sr_match3}")
 	print(f"Data matching (raw):")
 	print(f"\tLibrosa ({librosa_audio.dtype}) <-> Scipy ({scipy_audio.dtype}): {data_match1}")
 	print(f"\tLibrosa ({librosa_audio.dtype}) <-> Tensorflow ({tf_audio.numpy().dtype}): {data_match2}")
@@ -172,25 +181,42 @@ def main():
 	n_pad = pytorch_melspec.shape[-1] - tf_stft_melspec.shape[-1]
 	tf_stft_melspec = tf.pad(tf_stft_melspec, [[0, 0], [0, n_pad]])
 
+	# PyTorch torchaudio STFT. This comes from the way data is 
+	# processed using the torchaudio module from pytorch in the 
+	# preprocess.py module from the lmnt Diffwave repo.
+	t_stft = TT.MelSpectrogram(
+		sample_rate=t_sr, win_length=1024, hop_length=256, n_fft=1024,
+		f_min=0.0, f_max=8000.0, n_mels=80, power=1.0, normalized=True,
+		# f_min=20.0, f_max=t_sr / 2.0, n_mels=80, power=1.0, normalized=True, # From Diffwave repo
+	)
+	t_stft_melspec = t_stft(t_audio)
+	t_stft_melspec = torch.log10(torch.clamp(t_stft_melspec, min=1e-5))
+	# t_stft_melspec = 20 * torch.log10(torch.clamp(t_stft_melspec, min=1e-5)) - 20 # From lmnt-Diffwave repo
+	# t_stft_melspec = torch.clamp((t_stft_melspec + 100) / 100, 0.0, 1.0) # From lmnt-Diffwave repo
+
 	# Recalculate L1 difference between the tensorflow data array and 
 	# the rest.
 	melspec_l1_tf_2 = l1_loss(torch.tensor(librosa_melspec), torch.tensor(tf_stft_melspec.numpy()))
 	melspec_l1_tf_3 = l1_loss(pytorch_melspec, torch.tensor(tf_stft_melspec.numpy()))
+	melspec_l1_tf_4 = l1_loss(t_stft_melspec, torch.tensor(tf_stft_melspec.numpy()))
 
 	# Output comparisons.
 	print(f"L1 (MAE) difference (Tensorflow STFT):")
 	print(f"\tLibrosa <-> Tensorflow: {melspec_l1_tf_2}")
 	print(f"\tPytorch <-> Tensorflow: {melspec_l1_tf_3}")
+	print(f"\tPytorch (torchaudio) <-> Tensorflow: {melspec_l1_tf_4}")
 
 	# Recalculate L2 difference between the tensorflow data array and 
 	# the rest.
 	melspec_l2_tf_2 = l2_loss(torch.tensor(librosa_melspec), torch.tensor(tf_stft_melspec.numpy()))
 	melspec_l2_tf_3 = l2_loss(pytorch_melspec, torch.tensor(tf_stft_melspec.numpy()))
+	melspec_l2_tf_4 = l2_loss(t_stft_melspec, torch.tensor(tf_stft_melspec.numpy()))
 
 	# Output comparisons.
 	print(f"L2 (MSE) difference (Tensorflow STFT):")
 	print(f"\tLibrosa <-> Tensorflow: {melspec_l2_tf_2}")
 	print(f"\tPytorch <-> Tensorflow: {melspec_l2_tf_3}")
+	print(f"\tPytorch (torchaudio) <-> Tensorflow: {melspec_l2_tf_4}")
 	print("-" * 72)
 
 	# Exit the program.
