@@ -30,16 +30,6 @@ def dynamic_range_compression(x, C=1, clip_val=1e-5):
 			x, clip_value_min=clip_val, clip_value_max=tf.float32.max
 		) * C
 	)
-	# out1 = tf.clip_by_value(
-	# 	x, clip_value_min=clip_val, clip_value_max=tf.float32.max
-	# )
-	# out2 = out1 * C
-	# out3 = tf.math.log(out2)
-
-	# print(f"clipped matrix:\n{out1}")
-	# print(f"multiplied by constant:\n{out2}")
-	# print(f"log:\n{out3}")
-	# return out3
 
 
 class STFT:
@@ -102,9 +92,14 @@ class STFT:
 		# print(f"mel_spec:\n{mel_spec}")
 
 		# Apply spectral normalization through the dynamic range
-		# compression normalization.
+		# compression normalization (converts mel spectrogram to 
+		# decibels).
 		mel_spec = dynamic_range_compression(mel_spec)
 		# print(f"mel_spec after dynamic_range_compression:\n{mel_spec}")
+
+		# Normalize.
+		mel_spec = (mel_spec - tf.math.reduce_mean(mel_spec)) /\
+			tf.math.reduce_std(mel_spec)
 
 		# Return the mel spectrogram.
 		return mel_spec
