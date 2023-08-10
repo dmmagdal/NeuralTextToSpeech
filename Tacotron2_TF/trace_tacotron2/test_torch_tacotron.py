@@ -21,9 +21,9 @@ def main():
 	# Test (encoded) text input (of length 141).
 	# len(symbols) = 148. That should be the max value for the text
 	# encoded inputs.
-	fake_text = torch.randint(low=0, high=148, size=(141,))
-	fake_text = fake_text.unsqueeze(0) # Expand for batch size 1.
-	input_lens = torch.tensor([len(fake_text)])
+	fake_text = torch.randint(low=0, high=148, size=(4, 141,))
+	# fake_text = fake_text.unsqueeze(0) # Expand for batch size 1.
+	input_lens = torch.tensor([len(fake_text)] * 4)
 	print(f"Fake input text shape: {fake_text.size()}")
 
 	# Embedding layer that is a part of the initial tacotron2 model.
@@ -68,13 +68,13 @@ def main():
 
 	# Fake mel, gate, max_len, mel_len inputs. Mel length is going to
 	# be 1126. Expand dims for batch size 1.
-	fake_mel = torch.randn((1126, hparams.n_mel_channels))
-	fake_mel = fake_mel.unsqueeze(0)
-	fake_gates = torch.ones((1126,))
-	fake_gates[-1] = 0
-	fake_gates = fake_gates.unsqueeze(0)
-	mel_lens = torch.tensor([1126])
-	max_len = torch.tensor([1126])
+	fake_mel = torch.randn((4, 1126, hparams.n_mel_channels))
+	# fake_mel = fake_mel.unsqueeze(0)
+	fake_gates = torch.ones((4, 1126,))
+	fake_gates[:, -1] = 0
+	# fake_gates = fake_gates.unsqueeze(0)
+	mel_lens = torch.tensor([4, 1126])
+	max_len = torch.tensor([4, 1126])
 	print(f"Fake input mel shape: {fake_mel.size()}")
 	print(f"Fake gate shape: {fake_gates.size()}")
 	print(f"Fake mel_lens shape: {mel_lens.size()}")

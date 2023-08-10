@@ -58,6 +58,8 @@ class Attention(nn.Module):
 
 		processed_query = self.query_layer(query.unsqueeze(1))
 		processed_attention_weights = self.location_layer(attention_weights_cat)
+		print(f"processed_query {processed_query}, shape {processed_query.shape}")
+		print(f"processed_attention_weights {processed_attention_weights}, shape {processed_attention_weights.shape}")
 		energies = self.v(torch.tanh(
 			processed_query + processed_attention_weights + processed_memory))
 
@@ -75,11 +77,20 @@ class Attention(nn.Module):
 		attention_weights_cat: previous and cummulative attention weights
 		mask: binary mask for padded data
 		"""
+		print(f"Attention block:")
+		print(f"attention_hidden_state {attention_hidden_state}, shape {attention_hidden_state.shape}")
+		print(f"memory {memory}, shape {memory.shape}")
+		print(f"processed_memory {processed_memory}, shape {processed_memory.shape}")
+		print(f"attention_weights_cat {attention_weights_cat}, shape {attention_weights_cat.shape}")
+		print(f"mask {mask}, shape {mask}")
 		alignment = self.get_alignment_energies(
 			attention_hidden_state, processed_memory, attention_weights_cat)
+		print(f"alignment {alignment}, shape {alignment.shape}")
 
 		if mask is not None:
 			alignment.data.masked_fill_(mask, self.score_mask_value)
+			print(f"Mask is not None")
+			print(f"masked alignment {alignment}, shape {alignment.shape}")
 
 		attention_weights = F.softmax(alignment, dim=1)
 		attention_context = torch.bmm(attention_weights.unsqueeze(1), memory)
@@ -187,16 +198,18 @@ class Encoder(nn.Module):
 		input_lengths = input_lengths.cpu().numpy()
 		x = nn.utils.rnn.pack_padded_sequence(
 			x, input_lengths, batch_first=True)
-		# print(f"encoder data post rnn_pack_sequence shape: {x.size()}")
+		print(f"encoder data post rnn_pack_sequence shape: {x.data.size()}") # PackedSequence contains a property called data which is a Tensor
+		print(f"{x.data}")
 
 		self.lstm.flatten_parameters()
 		outputs, _ = self.lstm(x)
-		# print(f"encoder data post lstm shape: {x.size()}")
+		print(f"encoder data post lstm shape: {outputs.data.size()}") # PackedSequence contains a property called data which is a Tensor
 
 		outputs, _ = nn.utils.rnn.pad_packed_sequence(
 			outputs, batch_first=True)
 		# print(f"encoder data post rnn_pack_sequence2 shape: {x.size()}")
 		# print(f"encoder data post lstm shape: {x.size()}")
+		print(f"encoder data post rnn_pack_sequence2 shape: {outputs.size()}")
 
 		return outputs
 
@@ -304,6 +317,8 @@ class Decoder(nn.Module):
 		self.processed_memory = self.attention_layer.memory_layer(memory)
 		self.mask = mask
 
+		print(f"memory shape {memory.size()}")
+		print(F"MAX_TIME {MAX_TIME}")
 		print(f"initial attention_hidden shape: {self.attention_hidden.size()}")
 		print(f"initial attention_cell shape: {self.attention_cell.size()}")
 
@@ -386,20 +401,28 @@ class Decoder(nn.Module):
 		attention_weights:
 		"""
 		cell_input = torch.cat((decoder_input, self.attention_context), -1)
+		print(f"attention_cell {self.attention_cell}, shape {self.attention_cell.shape}")
+		print(f"attention_hidden {self.attention_hidden}, shape {self.attention_hidden.shape}")
 		self.attention_hidden, self.attention_cell = self.attention_rnn(
 			cell_input, (self.attention_hidden, self.attention_cell))
 		self.attention_hidden = F.dropout(
 			self.attention_hidden, self.p_attention_dropout, self.training)
 		print(self.attention_hidden.size())
 		print(self.attention_cell.size())
-		exit()
 
+		print(f"attention_weights {self.attention_weights}, shape {self.attention_weights.shape}")
+		print(f"attention_weights_cum {self.attention_weights_cum}, shape {self.attention_weights_cum.shape}")
 		attention_weights_cat = torch.cat(
 			(self.attention_weights.unsqueeze(1),
 			 self.attention_weights_cum.unsqueeze(1)), dim=1)
+		print(f"attention_weights_cat {attention_weights_cat}, shape {attention_weights_cat.shape}")
 		self.attention_context, self.attention_weights = self.attention_layer(
 			self.attention_hidden, self.memory, self.processed_memory,
 			attention_weights_cat, self.mask)
+		print(f"attention_weights_cat {attention_weights_cat}, shape {attention_weights_cat.shape}")
+		print(f"attention_context {self.attention_context}, shape {self.attention_context.shape}")
+		print(f"attention_weights {self.attention_weights}, shape {self.attention_weights.shape}")
+		exit()
 
 		self.attention_weights_cum += self.attention_weights
 		decoder_input = torch.cat(
@@ -432,6 +455,9 @@ class Decoder(nn.Module):
 		gate_outputs: gate outputs from the decoder
 		alignments: sequence of attention weights from the decoder
 		"""
+		print(f"raw memory (encoder output) input shape: {memory.shape}")
+		print(f"raw decoder (mel-spec) input shape: {decoder_inputs.shape}")
+		print(f"raw memory_lengths (text lengths) input shape: {memory_lengths.shape}")
 
 		decoder_input = self.get_go_frame(memory).unsqueeze(0)
 		print(f"decoder input (unsqueezed go frame) shape: {decoder_input.size()}")

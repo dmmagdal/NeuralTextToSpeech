@@ -73,7 +73,7 @@ def main():
 	# information. Also, the training and inference outputs should be
 	# the same shape.
 
-	enc_out = encoder(emb_out, input_lens)
+	enc_out = encoder(emb_out, input_lens, True)
 	print(f"Encoder output shape: {enc_out.shape}")
 	print("-" * 72)
 

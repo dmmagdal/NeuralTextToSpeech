@@ -146,8 +146,10 @@ class Attention(layers.Layer):
 			attention_weights_cat):
 		processed_query = self.query_layer(tf.expand_dims(query, 1))
 		processed_attention_weights = self.location_layer(
-			 attention_weights_cat
+			attention_weights_cat
 		)
+		print(f"processed_query {processed_query}, shape {processed_query.shape}")
+		print(f"processed_attention_weights {processed_attention_weights}, shape {processed_attention_weights.shape}")
 		energies = self.v(tf.math.tanh(
 			processed_query + processed_attention_weights +\
 			processed_memory
@@ -164,13 +166,22 @@ class Attention(layers.Layer):
 	# @param: mask, binary mask for padded data.
 	def call(self, attention_hidden_state, memory, processed_memory,
 			attention_weights_cat, mask):
+		print(f"Attention block:")
+		print(f"attention_hidden_state {attention_hidden_state}, shape {attention_hidden_state.shape}")
+		print(f"memory {memory}, shape {memory.shape}")
+		print(f"processed_memory {processed_memory}, shape {processed_memory.shape}")
+		print(f"attention_weights_cat {attention_weights_cat}, shape {attention_weights_cat.shape}")
+		print(f"mask {mask}, shape {mask}")
 		alignment = self.get_alignment_energies(
 			attention_hidden_state, processed_memory, 
 			attention_weights_cat
 		)
+		print(f"alignment {alignment}, shape {alignment.shape}")
 
 		if mask is not None:
 			alignment = tf.where(mask, alignment, self.score_mask_value)
+			print(f"Mask is not None")
+			print(f"masked alignment {alignment}, shape {alignment.shape}")
 
 		attention_weights = tf.nn.softmax(alignment, axis=1)
 		attention_context = tf.linalg.matmul(
@@ -293,15 +304,29 @@ class Encoder(layers.Layer):
 
 		self.lstm = layers.Bidirectional(
 			layers.LSTM(
-				int(hparams.encoder_embedding_dim /2),
+				int(hparams.encoder_embedding_dim / 2),
 				return_sequences=True, # allow for return of same shape tensor in pytorch implementation
 				# return_sequences=True makes each cell per timestep emit a signal.
 			)
 		)
 
+		self.masking = layers.Masking()
+		# TODO: Delete this commented out line
+		# self.rnn_lstm = layers.RNN(self.lstm, return_sequences=True)
 
-	def call(self, x, input_lengths):
+
+	def call(self, x, input_lengths, training=None):
+		print(f"encoder inputs shape pre ConvBlocks: {x.shape}")
 		x = self.convolutions(x)
+		print(f"encoder data shape post ConvBlocks: {x.shape}")
+
+		# TODO: Delete this commented out block
+		# if training:
+		# 	x = self.masking(x)
+		# 	# x = self.rnn_lstm(x, mask=tf.sequence_mask(input_lengths))
+		# 	outputs = self.lstm(x, mask=tf.sequence_mask(input_lengths))
+		# else:
+		# 	outputs = self.lstm(x)
 
 		outputs = self.lstm(x)
 		return outputs
@@ -391,6 +416,8 @@ class Decoder(layers.Layer):
 		)
 		self.mask = mask
 
+		print(f"memory shape {memory.shape}")
+		print(F"MAX_TIME {max_time}")
 		print(f"initial attention_hidden shape: {self.attention_hidden.shape}")
 		print(f"initial attention_cell shape: {self.attention_cell.shape}")
 
@@ -445,28 +472,39 @@ class Decoder(layers.Layer):
 
 	def decode(self, decoder_input):
 		cell_input = tf.concat((decoder_input, self.attention_context), -1)
-		self.attention_hidden, self.attention_cell = self.attention_rnn(
-			cell_input, [self.attention_hidden, self.attention_cell]
-		)
+		print(f"attention_cell {self.attention_cell}, shape {self.attention_cell.shape}")
+		print(f"attention_hidden {self.attention_hidden}, shape {self.attention_hidden.shape}")
+		# self.attention_hidden, self.attention_cell = self.attention_rnn(
+		# 	cell_input, [self.attention_hidden, self.attention_cell]
+		# )
+		outputs, (self.attention_hidden, self.attention_cell) = self.attention_rnn(
+			cell_input, states=[self.attention_hidden, self.attention_cell]
+		) # Not entirely sure if I'm doing this right. Refer to Tensorflow tf.keras.layers.LSTMCell vs Pytorch torch.nn.LSTMCell documentation
 		self.attention_hidden = self.attn_dropout(
 			self.attention_hidden, training=self.training
 		)
 		print(self.attention_hidden.shape)
-		# print(dir(self.attention_cell))
-		print(self.attention_cell._values)
+		print(self.attention_cell.shape)
 
+		print(f"attention_weights {self.attention_weights}, shape {self.attention_weights.shape}")
+		print(f"attention_weights_cum {self.attention_weights_cum}, shape {self.attention_weights_cum.shape}")
 		attention_weights_cat = tf.concat(
 			(
-				tf.expand_dims(self.attention_weights, 1),
+				tf.expand_dims(self.attention_weights, 1), # (batch_size, )
 				tf.expand_dims(self.attention_weights_cum, 1)
 			), axis=1
 		)
+		print(f"attention_weights_cat {attention_weights_cat}, shape {attention_weights_cat.shape}")
 		self.attention_context, self.attention_weights = self.attention_layer(
 			self.attention_hidden, self.memory, self.processed_memory,
 			attention_weights_cat, self.mask
 		)
+		print(f"attention_weights_cat {attention_weights_cat}, shape {attention_weights_cat.shape}")
+		print(f"attention_context {self.attention_context}, shape {self.attention_context.shape}")
+		print(f"attention_weights {self.attention_weights}, shape {self.attention_weights.shape}")
+		exit()
 
-		self.attention_weights_cum += attention_weights
+		self.attention_weights_cum += self.attention_weights
 		decoder_output = tf.concat(
 			(self.attention_hidden, self.attention_context), axis=-1
 		)
@@ -498,7 +536,12 @@ class Decoder(layers.Layer):
 			#	ground-truth mel-spectrogram
 			# memory_lengths (batch_size, text_len) lengths of all text
 			#	inputs.
+			print(f"In training")
+			print(f"inputs length {len(inputs)}")
 			memory, decoder_inputs, memory_lengths = inputs
+			print(f"raw memory (encoder output) input shape: {memory.shape}")
+			print(f"raw decoder (mel-spec) input shape: {decoder_inputs.shape}")
+			print(f"raw memory_lengths (text lengths) input shape: {memory_lengths.shape}")
 
 			# decoder_input (no 's'!) (1, batch_size, n_mels_channels *
 			#	n_frames_per_step) or (1, batch_size, n_mels_channels) if
@@ -530,7 +573,7 @@ class Decoder(layers.Layer):
 				)
 				mel_outputs += [tf.squeeze(mel_output, axis=1)]
 				gate_outputs += [tf.squeeze(gate_output, axis=1)]
-				alignments += [attention_weight]
+				alignments += [attention_weights]
 		else:
 			memory = inputs
 
