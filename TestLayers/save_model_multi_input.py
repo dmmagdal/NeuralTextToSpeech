@@ -20,6 +20,9 @@ from tensorflow import keras
 #	(model.build([(None,), (None,)])). Note that for the list of
 #	tuples, the inputs are expected to have dtype=tf.float32 by 
 #	default.
+# - One cannot pass in None to clearly defined input tensors. There is
+#	no "default" value for these unless they are set as an optional
+#	argument after the training=None argument.
 
 
 # Used sub-classed model and training defined here: 
