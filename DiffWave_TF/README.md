@@ -45,6 +45,8 @@ Description: DiffWave is a Diffusion vocoder used with neural text to speech mod
  * Training Notes:
 	 * Original authors trained their model for 1 million steps at batch size 16 for 13,000 to 16,000 samples across 8x Nvidia 2070Ti cards (8GB VRAM each). 
 		 * To match that training, I trained this model for 4 million steps at batch size of 8 (equivalent to 1 million steps at batch size 16) due to the original batch size being too much for my GPU (I would get OOM errors from the graphics card). This was on the LJSpeech dataset (13,000 audio samples).
+		 * UPDATE 1 (09/06/23): After training on my 2060 SUPER at 4 batches for the specified number of steps, I found the model produced was less than robust (the model produced at the end of training only generated static noise). Since then, I've acquired new hardware (a GPU server with 3x Nvidia P100 16GB Tesla cards) and have begun single device (only 1 card) training at batch size 16. 
+			 * I am also able to do 
 	 * 1 epoch of training on my machine at the above settings takes anywhere between 18 to 20 minutes. To train the full model (without interruptions) would take over 2 weeks (14+ days).
 		 * Because an epoch would take so long to train, I have my checkpoint callback save at every epoch. I would have liked to have been saving every 5 or 10 epochs but the cost of making up time between the lost epochs would have lengthened the training time in the event of interruptions (which did happen).
 	 * Training on my Desktop (Nvidia 2060 SUPER 8GB) crashes roughly every 100+ epochs due to one reason or another. Root cause isn't clear other than possible memory issues (RAM or VRAM). It always fails when calling the `on_epoch_end()` function on the callback list.
@@ -123,3 +125,6 @@ UPDATE:
 		 * [early stopping](https://www.tensorflow.org/api_docs/python/tf/keras/callbacks/EarlyStopping)
 	 * Graph vs Eager Execution
 		 * [introduction to graphs and tf.function](https://www.tensorflow.org/guide/intro_to_graphs)
+	 * Distributed/Parallel Training
+		 * [Multi-GPU and distributed training](https://www.tensorflow.org/guide/keras/distributed_training)
+		 * [Custom training with tf.distribute.Strategy](https://www.tensorflow.org/tutorials/distribute/custom_training)
