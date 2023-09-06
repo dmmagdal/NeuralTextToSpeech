@@ -425,12 +425,13 @@ def distribute_train(args):
 	# NOTE: dist_batch_size * num_devices is the global batch size
 	# across all GPUs. The local batch size for each GPU is 
 	# dist_batch_size.
+	global_batch_size = params.dist_batch_size * num_devices
 	train_dataset = train_dataset.batch(
-		params.dist_batch_size * num_devices, drop_remainder=True
+		global_batch_size, drop_remainder=True
 	)
 	train_dataset = train_dataset.prefetch(tf.data.AUTOTUNE)
 	valid_dataset = valid_dataset.batch(
-		params.dist_batch_size * num_devices, drop_remainder=True
+		global_batch_size, drop_remainder=True
 	)
 	valid_dataset = valid_dataset.prefetch(tf.data.AUTOTUNE)
 
@@ -462,12 +463,12 @@ def distribute_train(args):
 		# Compute the number of epochs from max_steps (1 step = 1 
 		# batch).
 		if args.max_steps is not None:
-			steps_per_epoch = train_data.__len__() / params.batch_size
+			steps_per_epoch = train_data.__len__() / global_batch_size
 			epochs = math.ceil(args.max_steps / steps_per_epoch)
-			print(f"Training DiffWave vocoder for {args.max_steps} steps at batch size {params.batch_size} ({epochs} epochs)")
+			print(f"Training DiffWave vocoder for {args.max_steps} steps at global batch size {global_batch_size} ({epochs} epochs, local batch size {params.dist_batch_size})")
 		else:
 			epochs = 1
-			print(f"Training DiffWave vocoder for 1 epoch at batch size {params.batch_size}")
+			print(f"Training DiffWave vocoder for 1 epoch at global batch size {global_batch_size}")
 
 		###############################################################
 		# Initialize callbacks.
