@@ -24,7 +24,7 @@ class AttrDict(dict):
 params = AttrDict(
 	# Training params
 	batch_size = 16,#4,#16,	# Original was 16. Used 4 on 2060 SUPER
-	dist_batch_size = 4,#8	# Added myself for multi GPU training
+	dist_batch_size = 6,#8	# Added myself for multi GPU training
 	learning_rate = 2e-4,
 	max_grad_norm = None,
 

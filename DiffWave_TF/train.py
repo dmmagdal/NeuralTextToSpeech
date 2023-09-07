@@ -561,10 +561,6 @@ def distribute_train(args):
 
 		# Step through training data.
 		for train in train_dataset:
-			# step(
-			# 	train, model, loss, params, epoch_loss_avg, 
-			# 	training=True
-			# )
 			strategy.run(
 				step, 
 				args=(
@@ -574,13 +570,11 @@ def distribute_train(args):
 
 		# Step through validation data.
 		for valid in valid_dataset:
-			# step(
-			# 	valid, model, loss, params, epoch_val_loss_avg
-			# )
 			strategy.run(
 				step, 
 				args=(
-					valid, model, loss, params, epoch_val_loss_avg, False
+					valid, model, loss, params, epoch_val_loss_avg, 
+					False
 				)
 			)
 
@@ -612,49 +606,6 @@ def distribute_train(args):
 
 	# Exit the program.
 	exit(0)
-
-
-@tf.function()
-def distribute_step(data, model, loss_fn, params, metrics, training=None):
-	# Unpack data.
-	audio, mel = data
-	N, T = audio.shape
-
-	# Noise.
-	beta = np.array(params.noise_schedule)
-	noise_level = np.cumprod(1 - beta)
-	noise_level = tf.convert_to_tensor(noise_level)
-	t = tf.random.uniform([N], 0, len(params.noise_schedule))
-	t = tf.cast(tf.round(t), dtype=tf.int32)
-	# noise_scale = tf.expand_dims(noise_level[t], 1)
-	noise_scale = tf.expand_dims(tf.gather(noise_level, t), 1)
-	noise_scale = tf.cast(noise_scale, dtype=tf.float32) # added to convert from float64 to float32
-	noise_scale_sqrt = noise_scale ** 0.5
-	noise = tf.random.normal(tf.shape(audio), dtype=tf.float32)
-	noisy_audio = noise_scale_sqrt * audio + (1.0 - noise_scale) ** 0.5 * noise
-	
-	if training:
-		with tf.GradientTape() as tape:
-			# predicted = self(noisy_audio, t, mel)
-			# predicted = self((noisy_audio, t), spectrogram=mel)
-			predicted = model.call((noisy_audio, t, mel), training=training)
-			# loss = loss(noise, tf.squeeze(predicted, 1)) # Original
-			loss = loss_fn(noise, tf.squeeze(predicted, -1))
-
-		# Compute gradients.
-		# trainable_vars = model.trainable_variables
-		gradients = tape.gradient(loss, model.trainable_variables)
-
-		# Update weights.
-		optimizer = model.optimizer
-		optimizer.apply_gradients(zip(gradients, model.trainable_variables))
-	else:
-		predicted = model.call((noisy_audio, t, mel), training=training)
-		loss = loss_fn(noise, tf.squeeze(predicted, -1))
-	
-	# Update metrics (avg loss).
-	if metrics is not None:
-		metrics.update_state(loss)
 
 
 if __name__ == "__main__":
