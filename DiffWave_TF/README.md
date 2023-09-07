@@ -57,11 +57,11 @@ Description: DiffWave is a Diffusion vocoder used with neural text to speech mod
 		 * Training had to be resumed 8 times (not including initial start) due to interruptions (roughly every 2 to 3 days).
 	 * Training on my server (3x Nvidia P100 16GB).
 		 * Single GPU
-			 * Each epoch takes around 15 to 16 minutes on higher batch size.
+			 * Training fails after around 8 epochs. Failure message is just `Segmentation fault (core dumped)` with no other information. Each epoch takes around 15 to 16 minutes on higher batch size. 
 		 * Multi GPU
 			 * Training fails after around 5 epochs. Failure message is just `Segmentation fault (core dumped)` with no other information. Each epoch takes around 16 to 17 minutes (this is for the whole epoch).
-		 * Given the lower training/comprable speed to train single GPU, and the lack of any mysterious errors that I've found, it seems like there is no advantage at this moment to use the multi GPU training.
-		 * Potenial links to look at for debugging the segmentation fault in multi GPU training.
+		 * Given the lower training/comprable speed to train single GPU, it seems like there is no advantage at this moment to use the multi GPU training.
+		 * Potenial links to look at for debugging the segmentation fault in training.
 			 * tensorflow [github issue](https://github.com/tensorflow/tensorflow/issues/40558) (40558)
 			 * tensorflow [github issue](https://github.com/tensorflow/tensorflow/issues/54747) (54747)
 			 * question on [stack overflow](https://stackoverflow.com/questions/50347871/segmentation-fault-core-dumped-on-tf-session)
